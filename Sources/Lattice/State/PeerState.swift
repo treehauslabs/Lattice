@@ -1,0 +1,60 @@
+import cashew
+import Foundation
+
+public struct PeerValue: Scalar {
+    let IpAddress: String
+    let refreshed: Int64
+    let fullNode: Bool
+    
+    init(IpAddress: String, refreshed: Int64, fullNode: Bool) {
+        self.IpAddress = IpAddress
+        self.refreshed = refreshed
+        self.fullNode = fullNode
+    }
+    
+    init(peerAction: PeerAction) {
+        IpAddress = peerAction.IpAddress
+        refreshed = peerAction.refreshed
+        fullNode = peerAction.fullNode
+    }
+    
+    public var description: String {
+        return String(data: try! JSONEncoder().encode(self), encoding: .utf8)!
+    }
+}
+
+public typealias PeerState = MerkleDictionaryImpl<PeerValue>
+public typealias PeerStateHeader = HeaderImpl<PeerState>
+
+public extension PeerStateHeader {
+    func prove(allPeerActions: [PeerAction], fetcher: Fetcher) async throws -> PeerStateHeader {
+        var proofs = [[String]: SparseMerkleProof]()
+        for action in allPeerActions {
+            if proofs[[action.owner.rawCID]] != nil { throw StateErrors.conflictingActions }
+            switch action.type {
+            case .delete: proofs[[action.owner.rawCID]] = .deletion
+            case .insert: proofs[[action.owner.rawCID]] = .insertion
+            case .update: proofs[[action.owner.rawCID]] = .mutation
+            }
+        }
+        return try await proof(paths: proofs, fetcher: fetcher)
+    }
+    
+    func updateState(allPeerActions: [PeerAction], fetcher: Fetcher) throws -> PeerStateHeader {
+        var transforms = [[String]: Transform]()
+        for action in allPeerActions {
+            switch action.type {
+            case .delete: transforms[[action.owner.rawCID]] = .delete
+            case .insert: transforms[[action.owner.rawCID]] = .insert(PeerValue(peerAction: action).description)
+            case .update: transforms[[action.owner.rawCID]] = .update(PeerValue(peerAction: action).description)
+            }
+        }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        return transformResult
+    }
+    
+    func proveAndUpdateState(allPeerActions: [PeerAction], fetcher: Fetcher) async throws -> PeerStateHeader {
+        let newHeader = try await prove(allPeerActions: allPeerActions, fetcher: fetcher)
+        return try newHeader.updateState(allPeerActions: allPeerActions, fetcher: fetcher)
+    }
+}

@@ -7,7 +7,7 @@ public struct ChainSpec: Scalar {
     // Maximum number of transactions allowed per block
     public let maxNumberOfTransactionsPerBlock: UInt64
     // Maximum number of bytes actions can add to the world state per block
-    public let maxStateGrowth: UInt64
+    public let maxStateGrowth: Int
     // Number of blocks mined by creators before public mining begins (must be < 2^63). Controls initial token disribution.
     public let premine: UInt64
     // Target time interval between blocks in milliseconds. Similar to Bitcoin's 10-minute target.
@@ -18,17 +18,19 @@ public struct ChainSpec: Scalar {
     public static let maxDifficultyChange: UInt8 = 2
     // List of validation rules for transactions in JavaScript.
     public let transactionFilters: [String]
+    public let actionFilters: [String]
     
     // Cached values for optimization
     private var _halvingInterval: UInt64?
     
     public init(
         maxNumberOfTransactionsPerBlock: UInt64,
-        maxStateGrowth: UInt64,
+        maxStateGrowth: Int,
         premine: UInt64,
         targetBlockTime: UInt64,
         initialRewardExponent: UInt8,
-        transactionFilters: [String] = []
+        transactionFilters: [String] = [],
+        actionFilters: [String] = []
     ) {
         self.maxNumberOfTransactionsPerBlock = maxNumberOfTransactionsPerBlock
         self.maxStateGrowth = maxStateGrowth
@@ -36,6 +38,7 @@ public struct ChainSpec: Scalar {
         self.targetBlockTime = targetBlockTime
         self.initialRewardExponent = initialRewardExponent
         self.transactionFilters = transactionFilters
+        self.actionFilters = actionFilters
     }
 }
 

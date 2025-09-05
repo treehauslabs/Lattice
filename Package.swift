@@ -17,8 +17,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
-        .package(url: "https://github.com/pumperknickle/cashew.git", from: "0.0.3"),
-        .package(url: "https://github.com/hyugit/UInt256.git", branch: "master")
+        .package(url: "https://github.com/pumperknickle/cashew.git", from: "0.0.8"),
+        .package(url: "https://github.com/hyugit/UInt256.git", branch: "master"),
+        .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1")
     ],
     targets: [
         .target(
@@ -26,6 +27,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "cashew", package: "cashew"),
+                .product(name: "CID", package: "swift-cid"),
                 .product(name: "UInt256", package: "UInt256")
             ]),
         .executableTarget(
