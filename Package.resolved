@@ -1,0 +1,141 @@
+{
+  "originHash" : "a7b07ed88231a079d3f0a97ae07c6af0029dc995ef6e268f9cabce6272658010",
+  "pins" : [
+    {
+      "identity" : "arraytrie",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pumperknickle/ArrayTrie.git",
+      "state" : {
+        "revision" : "eab17dd07357aa8a86b728155aa624263af8cb48",
+        "version" : "0.1.7"
+      }
+    },
+    {
+      "identity" : "cashew",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pumperknickle/cashew.git",
+      "state" : {
+        "revision" : "26e0b1e1ddfbc9bbf3b5e405e5c469697c411c05",
+        "version" : "0.0.8"
+      }
+    },
+    {
+      "identity" : "collectionconcurrencykit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/JohnSundell/CollectionConcurrencyKit.git",
+      "state" : {
+        "revision" : "b4f23e24b5a1bff301efc5e70871083ca029ff95",
+        "version" : "0.2.0"
+      }
+    },
+    {
+      "identity" : "cryptoswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
+      "state" : {
+        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
+        "version" : "1.9.0"
+      }
+    },
+    {
+      "identity" : "swift-asn1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-asn1.git",
+      "state" : {
+        "revision" : "f70225981241859eb4aa1a18a75531d26637c8cc",
+        "version" : "1.4.0"
+      }
+    },
+    {
+      "identity" : "swift-bases",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-bases.git",
+      "state" : {
+        "revision" : "b5fb3260b0a2020d17700fbf496e4f9bba5e673e",
+        "version" : "0.0.4"
+      }
+    },
+    {
+      "identity" : "swift-cid",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-cid.git",
+      "state" : {
+        "revision" : "8af5d9de451ceaf45a42e9d6784054d8f5fa3544",
+        "version" : "0.0.4"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "8c0c0a8b49e080e54e5e328cc552821ff07cd341",
+        "version" : "1.2.1"
+      }
+    },
+    {
+      "identity" : "swift-crypto",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-crypto.git",
+      "state" : {
+        "revision" : "334e682869394ee239a57dbe9262bff3cd9495bd",
+        "version" : "3.14.0"
+      }
+    },
+    {
+      "identity" : "swift-multibase",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-multibase.git",
+      "state" : {
+        "revision" : "41f436aa7389481bc01ee0cd032b422acd1ffd16",
+        "version" : "0.0.3"
+      }
+    },
+    {
+      "identity" : "swift-multicodec",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-multicodec.git",
+      "state" : {
+        "revision" : "bcc70e2debd98348546133abb50270e13b3da87d",
+        "version" : "0.0.8"
+      }
+    },
+    {
+      "identity" : "swift-multihash",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-multihash.git",
+      "state" : {
+        "revision" : "7ea5a9866bd341601fa61647d521880944139353",
+        "version" : "0.0.4"
+      }
+    },
+    {
+      "identity" : "swift-varint",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-libp2p/swift-varint.git",
+      "state" : {
+        "revision" : "1ea4cd2ea5f1c74527600de659f0805d2e12fa6b",
+        "version" : "0.0.2"
+      }
+    },
+    {
+      "identity" : "triedictionary",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pumperknickle/TrieDictionary.git",
+      "state" : {
+        "revision" : "982c39de89bd8981dc368c95ca291b4f95477611",
+        "version" : "0.0.9"
+      }
+    },
+    {
+      "identity" : "uint256",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hyugit/UInt256.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "a5cd5756244550da79721986ef303cfad3987c75"
+      }
+    }
+  ],
+  "version" : 3
+}

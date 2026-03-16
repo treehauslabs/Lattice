@@ -19,7 +19,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
         .package(url: "https://github.com/pumperknickle/cashew.git", from: "0.0.8"),
         .package(url: "https://github.com/hyugit/UInt256.git", branch: "master"),
-        .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1")
+        .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1"),
+        .package(url: "https://github.com/JohnSundell/CollectionConcurrencyKit.git", from: "0.2.0"),
     ],
     targets: [
         .target(

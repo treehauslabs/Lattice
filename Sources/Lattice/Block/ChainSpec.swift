@@ -4,6 +4,7 @@ import UInt256
 
 // Defines the definition and economic model of a blockchain - how rewards are distributed, when they decrease, and what the total supply will be over time.
 public struct ChainSpec: Scalar {
+    public let directory: String
     // Maximum number of transactions allowed per block
     public let maxNumberOfTransactionsPerBlock: UInt64
     // Maximum number of bytes actions can add to the world state per block
@@ -24,6 +25,7 @@ public struct ChainSpec: Scalar {
     private var _halvingInterval: UInt64?
     
     public init(
+        directory: String = "Nexus",
         maxNumberOfTransactionsPerBlock: UInt64,
         maxStateGrowth: Int,
         premine: UInt64,
@@ -32,6 +34,7 @@ public struct ChainSpec: Scalar {
         transactionFilters: [String] = [],
         actionFilters: [String] = []
     ) {
+        self.directory = directory
         self.maxNumberOfTransactionsPerBlock = maxNumberOfTransactionsPerBlock
         self.maxStateGrowth = maxStateGrowth
         self.premine = premine

@@ -1,17 +1,16 @@
 import cashew
+import Foundation
 
-public let RECEIPT_PROPERTIES = Set(["withdrawer", "demander"])
-
-public struct ReceiptAction {
-    let withdrawer: HeaderImpl<PublicKey>
+public struct ReceiptAction: Codable, Sendable {
+    let withdrawer: String
     let nonce: UInt128
     // cryptographic hash of demander public key
-    let demander: HeaderImpl<PublicKey>
+    let demander: String
     // Total amount to send
     let amountDemanded: UInt64
     let directory: String
     
-    init(withdrawer: HeaderImpl<PublicKey>, nonce: UInt128, demander: HeaderImpl<PublicKey>, amountDemanded: UInt64, directory: String) {
+    init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, directory: String) {
         self.withdrawer = withdrawer
         self.nonce = nonce
         self.demander = demander
@@ -19,37 +18,21 @@ public struct ReceiptAction {
         self.directory = directory
     }
     
-    func stateDelta() -> Int? {
-        guard let withdrawerKeyHeaderCount = withdrawer.rawCID.data(using: .utf8)?.count else { return nil }
-        guard let withdrawerKeyCount = withdrawer.node?.key.data(using: .utf8)?.count else { return nil }
-        guard let demanderKeyHeaderCount = demander.rawCID.data(using: .utf8)?.count else { return nil }
-        guard let demanderKeyCount = demander.node?.key.data(using: .utf8)?.count else { return nil }
-        guard let directoryCount = directory.data(using: .utf8)?.count else { return nil }
-        return withdrawerKeyHeaderCount + withdrawerKeyCount + demanderKeyHeaderCount + demanderKeyCount + directoryCount + 24
+    func stateDelta() throws -> Int {
+        guard let withdrawerKeyCount = withdrawer.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
+        guard let demanderKeyCount = demander.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
+        guard let directoryCount = directory.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
+        return withdrawerKeyCount + demanderKeyCount + directoryCount + 24
     }
     
     public func totalSize() -> Int? {
-        guard let withdrawerKeySize = withdrawer.node?.key.toData()?.count else { return nil }
-        guard let demanderKeySize = demander.node?.key.toData()?.count else { return nil }
+        guard let withdrawerKeySize = withdrawer.toData()?.count else { return nil }
+        guard let demanderKeySize = demander.toData()?.count else { return nil }
         guard let dataSize = toData()?.count else { return nil }
         return withdrawerKeySize + demanderKeySize + dataSize
     }
-}
-
-extension ReceiptAction: Node {
-    public func get(property: PathSegment) -> (any cashew.Address)? {
-        switch property {
-            case "withdrawer": return withdrawer
-            case "demander": return demander
-            default: return nil
-        }
-    }
     
-    public func properties() -> Set<PathSegment> {
-        return RECEIPT_PROPERTIES
-    }
-    
-    public func set(properties: [PathSegment : any cashew.Address]) -> ReceiptAction {
-        return Self(withdrawer: properties["withdrawer"] as! HeaderImpl<PublicKey>, nonce: nonce, demander: properties["demander"] as! HeaderImpl<PublicKey>, amountDemanded: amountDemanded, directory: directory)
+    public func toData() -> Data? {
+        return try? JSONEncoder().encode(self)
     }
 }

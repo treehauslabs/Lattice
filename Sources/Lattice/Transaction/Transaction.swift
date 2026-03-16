@@ -16,6 +16,46 @@ public struct Transaction {
         }
         return true
     }
+    
+    func signaturesMatchSigners() -> Bool {
+        guard let bodyNode = body.node else { return false }
+        let signatureHashes = Set(signatures.keys.map { HeaderImpl<PublicKey>(node: PublicKey(key: $0)).rawCID })
+        for signer in bodyNode.signers {
+            if !signatureHashes.contains(signer) { return false }
+        }
+        return true
+    }
+    
+    func validateTransactionForGenesis(fetcher: Fetcher) async throws -> Bool {
+        if !signaturesAreValid() { return false }
+        let resolvedBody = try await body.resolve(fetcher: fetcher)
+        if !signaturesMatchSigners() { return false }
+        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        if !bodyNode.accountActionsAreValid() { return false }
+        if !bodyNode.withdrawalActions.isEmpty { return false }
+        return true
+    }
+    
+    func validateTransactionForNexus(fetcher: Fetcher) async throws -> Bool {
+        if !signaturesAreValid() { return false }
+        let resolvedBody = try await body.resolve(fetcher: fetcher)
+        if !signaturesMatchSigners() { return false }
+        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        if !bodyNode.accountActionsAreValid() { return false }
+        if !bodyNode.depositActions.isEmpty { return false }
+        if !bodyNode.withdrawalActions.isEmpty { return false }
+        return true
+    }
+    
+    func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
+        if !signaturesAreValid() { return false }
+        let resolvedBody = try await body.resolve(fetcher: fetcher)
+        if !signaturesMatchSigners() { return false }
+        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        if !bodyNode.accountActionsAreValid() { return false }
+        if try await !bodyNode.withdrawalsAreValid(directory: directory, homestead: homestead, parentState: parentState, fetcher: fetcher) { return false }
+        return true
+    }
 }
 
 extension Transaction: Node {

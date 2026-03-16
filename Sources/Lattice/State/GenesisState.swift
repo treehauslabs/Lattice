@@ -16,7 +16,7 @@ public extension GenesisStateHeader {
     func updateState(allGenesisActions: [GenesisAction], fetcher: Fetcher) throws -> GenesisStateHeader {
         var transforms = [[String]: Transform]()
         for genesisAction in allGenesisActions {
-            transforms[[genesisAction.directory]] = .insert(String(genesisAction.block.rawCID))
+            transforms[[genesisAction.directory]] = .insert(String(genesisAction.block))
         }
         guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
         return transformResult

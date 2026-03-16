@@ -7,14 +7,14 @@ public extension AccountStateHeader {
     func prove(allAccountActions: [AccountAction], fetcher: Fetcher) async throws -> AccountStateHeader {
         var proofs = [[String]: SparseMerkleProof]()
         for action in allAccountActions {
-            if proofs[[action.owner.rawCID]] != nil { throw StateErrors.conflictingActions }
+            if proofs[[action.owner]] != nil { throw StateErrors.conflictingActions }
             if action.newBalance == 0 {
-                proofs[[action.owner.rawCID]] = .deletion
+                proofs[[action.owner]] = .deletion
             }
             if action.oldBalance == 0 {
-                proofs[[action.owner.rawCID]] = .insertion
+                proofs[[action.owner]] = .insertion
             }
-            proofs[[action.owner.rawCID]] = .mutation
+            proofs[[action.owner]] = .mutation
         }
         return try await proof(paths: proofs, fetcher: fetcher)
     }
@@ -23,14 +23,14 @@ public extension AccountStateHeader {
         var transforms = [[String]: Transform]()
         for action in allAccountActions {
             if action.newBalance == 0 {
-                transforms[[action.owner.rawCID]] = .delete
+                transforms[[action.owner]] = .delete
                 continue
             }
             if action.oldBalance == 0 {
-                transforms[[action.owner.rawCID]] = .insert(String(action.newBalance))
+                transforms[[action.owner]] = .insert(String(action.newBalance))
                 continue
             }
-            transforms[[action.owner.rawCID]] = .update(String(action.newBalance))
+            transforms[[action.owner]] = .update(String(action.newBalance))
         }
         guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
         return transformResult

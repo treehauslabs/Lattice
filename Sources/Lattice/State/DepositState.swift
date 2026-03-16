@@ -3,7 +3,7 @@ import cashew
 public struct DepositKey: LosslessStringConvertible {
     let nonce: UInt128
     // cryptographic hash of recipient public key
-    let demander: HeaderImpl<PublicKey>
+    let demander: String
     // Total amount to send
     let amountDemanded: UInt64
     
@@ -13,7 +13,7 @@ public struct DepositKey: LosslessStringConvertible {
         amountDemanded = depositAction.amountDemanded
     }
     
-    public init(nonce: UInt128, demander: HeaderImpl<PublicKey>, amountDemanded: UInt64) {
+    public init(nonce: UInt128, demander: String, amountDemanded: UInt64) {
         self.nonce = nonce
         self.demander = demander
         self.amountDemanded = amountDemanded
@@ -21,7 +21,7 @@ public struct DepositKey: LosslessStringConvertible {
     
     public init?(_ description: String) {
         let split = description.split(separator: "/", maxSplits: 3, omittingEmptySubsequences: true)
-        let demander = HeaderImpl<PublicKey>(rawCID: String(split[0]))
+        let demander = String(split[0])
         guard let amountDemanded = UInt64(String(split[1])) else { return nil }
         guard let nonce = UInt128(String(split[2])) else { return nil }
         self.nonce = nonce
@@ -30,7 +30,7 @@ public struct DepositKey: LosslessStringConvertible {
     }
     
     public var description: String {
-        return "\(demander.rawCID)/\(amountDemanded.description)/\(nonce.description)"
+        return "\(demander)/\(amountDemanded.description)/\(nonce.description)"
     }
 }
 

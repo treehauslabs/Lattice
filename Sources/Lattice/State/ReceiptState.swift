@@ -4,7 +4,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     let directory: String
     let nonce: UInt128
     // cryptographic hash of recipient public key
-    let demander: HeaderImpl<PublicKey>
+    let demander: String
     // Total amount to send
     let amountDemanded: UInt64
     
@@ -18,7 +18,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     public init?(_ description: String) {
         let split = description.split(separator: "/", maxSplits: 4, omittingEmptySubsequences: true)
         let directory = String(split[0])
-        let demander = HeaderImpl<PublicKey>(rawCID: String(split[1]))
+        let demander = String(split[1])
         guard let amountDemanded = UInt64(String(split[2])) else { return nil }
         guard let nonce = UInt128(String(split[3])) else { return nil }
         self.directory = directory
@@ -28,7 +28,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     }
     
     public var description: String {
-        return "\(directory)/\(demander.rawCID)/\(amountDemanded.description)\(nonce.description)"
+        return "\(directory)/\(demander)/\(amountDemanded.description)\(nonce.description)"
     }
 }
 
@@ -59,7 +59,7 @@ public extension ReceiptStateHeader {
         var transforms = [[String]: Transform]()
         for receiptAction in allReceiptActions {
             let receiptKey = ReceiptKey(receiptAction: receiptAction).description
-            transforms[[receiptKey]] = .insert(receiptAction.withdrawer.rawCID)
+            transforms[[receiptKey]] = .insert(receiptAction.withdrawer)
         }
         guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
         return transformResult

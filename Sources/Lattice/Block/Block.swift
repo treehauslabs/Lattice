@@ -2,6 +2,8 @@ import Foundation
 import Crypto
 import cashew
 import UInt256
+import ArrayTrie
+import CollectionConcurrencyKit
 
 let PREVIOUS_BLOCK_PROPERTY = "previous"
 let TRANSACTIONS_PROPERTY = "transactions"
@@ -13,9 +15,10 @@ let CHILD_BLOCKS_PROPERTY = "childBlocks"
 
 let BLOCK_PROPERTIES = Set([PREVIOUS_BLOCK_PROPERTY, TRANSACTIONS_PROPERTY, SPEC_PROPERTY, PARENT_HOMESTEAD_PROPERTY, HOMESTEAD_PROPERTY, FRONTIER_PROPERTY, CHILD_BLOCKS_PROPERTY])
 
-public struct Block {
+public struct Block: Hashable {
     let previousBlock: HeaderImpl<Block>?
     let transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>
+    let difficulty: UInt256
     let nextDifficulty: UInt256
     let spec: HeaderImpl<ChainSpec>
     let parentHomestead: LatticeStateHeader
@@ -26,79 +29,74 @@ public struct Block {
     let timestamp: Int64
     let nonce: UInt64
     
-    // transactions should be fully resolved
-    public func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> Bool {
-        let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
-        async let resolvedFrontier = frontier.resolve(fetcher: fetcher)
-        guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
-        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
-        let (finalFrontier, finalUpdatedHomestead) = await (try resolvedFrontier, try updatedHomestead)
-        guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
-        return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.withdrawalState.rawCID == finalUpdatedHomestead.withdrawalState.rawCID
+    public static func == (lhs: Block, rhs: Block) -> Bool {
+        guard let lhsData = lhs.toData() else { return false }
+        guard let rhsData = rhs.toData() else { return false }
+        return UInt256.hash(lhsData) == UInt256.hash(rhsData)
     }
     
-    public func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction]) throws -> Bool {
-        let reward = spec.rewardAtBlock(index)
-        let totalDeposited = try getTotalDeposited(allDepositActions: allDepositActions)
-        let totalWithdrawn = try getTotalWithdrawn(allWithdrawalActions: allWithdrawalActions)
-        let totalBalanceBefore = allAccountActions.map { $0.oldBalance }.reduce(0, +)
-        let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
-        return totalBalanceAfter <= totalBalanceBefore - totalDeposited + totalWithdrawn + reward
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(difficulty)
+        hasher.combine(index)
+        hasher.combine(timestamp)
+        hasher.combine(nonce)
     }
     
-    public func getAllAccountActions(transactionBodies: [TransactionBody]) throws -> [AccountAction] {
-        let totalAccountNodes = transactionBodies.map { $0.accountActions.node }
-        if totalAccountNodes.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
-        return try totalAccountNodes.map { try $0!.allKeysAndValues() }.map { $0.values }.reduce([], +)
+    public func getGenesisSize() throws -> Int {
+        guard let blockCount = toData()?.count else { throw ValidationErrors.serializationError }
+        guard let specCount = spec.node?.toData()?.count else { throw ValidationErrors.serializationError }
+        guard let transactionKeysCount = try? transactions.node?.allKeys().map({ $0.count }).reduce(0, +) else { throw ValidationErrors.transactionNotResolved }
+        guard let transactionsKeysAndValues = try? transactions.node?.allKeysAndValues() else { throw ValidationErrors.transactionNotResolved }
+        var totalTransactionDataCount = 0
+        for transaction in transactionsKeysAndValues {
+            guard let transctionDataCount = transaction.value.node?.toData()?.count else { throw ValidationErrors.transactionNotResolved }
+            totalTransactionDataCount += transctionDataCount
+        }
+        guard let childBlocksKeysCount = try childBlocks.node?.allKeys().map({ $0.count }).reduce(0, +) else { throw ValidationErrors.transactionNotResolved }
+        guard let childBlocksKeysAndValues = try childBlocks.node?.allKeysAndValues() else { throw ValidationErrors.transactionNotResolved }
+        var childBlocksCount = 0
+        for block in childBlocksKeysAndValues {
+            guard let blockDataCount = try block.value.node?.getGenesisSize() else { throw ValidationErrors.transactionNotResolved }
+            childBlocksCount += blockDataCount
+        }
+        return blockCount + specCount + transactionKeysCount + totalTransactionDataCount + childBlocksKeysCount + childBlocksCount
     }
     
-    public func getAllDepositActions(transactionBodies: [TransactionBody]) throws -> [DepositAction] {
-        let totalDepositsNodes = transactionBodies.map { $0.depositActions.node }
-        if totalDepositsNodes.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
-        return try totalDepositsNodes.map { try $0!.allKeysAndValues() }.map { $0.values }.reduce([], +)
+    
+    public func getAllAccountActions(transactionBodies: [TransactionBody]) -> [AccountAction] {
+        return transactionBodies.map { $0.accountActions }.reduce([], +)
     }
     
-    public func getAllWithdrawalActions(transactionBodies: [TransactionBody]) throws -> [WithdrawalAction] {
-        let totalWithdrawalNodes = transactionBodies.map { $0.withdrawalActions.node }
-        if totalWithdrawalNodes.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
-        return try totalWithdrawalNodes.map { try $0!.allKeysAndValues() }.map { $0.values }.reduce([], +)
+    public func getAllDepositActions(transactionBodies: [TransactionBody]) -> [DepositAction] {
+        return transactionBodies.map { $0.depositActions }.reduce([], +)
     }
     
-    public func getTotalDeposited(allDepositActions: [DepositAction]) throws -> UInt64 {
+    public func getAllWithdrawalActions(transactionBodies: [TransactionBody]) -> [WithdrawalAction] {
+        return transactionBodies.map { $0.withdrawalActions }.reduce([], +)
+    }
+    
+    public func getAllActions(transactionBodies: [TransactionBody]) -> [Action] {
+        return transactionBodies.map { $0.actions }.reduce([], +)
+    }
+    
+    public func getAllGenesisActions(transactionBodies: [TransactionBody]) -> [GenesisAction] {
+        return transactionBodies.map { $0.genesisActions }.reduce([], +)
+    }
+    
+    public func getAllPeerActions(transactionBodies: [TransactionBody]) -> [PeerAction] {
+        return transactionBodies.map { $0.peerActions }.reduce([], +)
+    }
+    
+    public func getAllReceiptActions(transactionBodies: [TransactionBody]) -> [ReceiptAction] {
+        return transactionBodies.map { $0.receiptActions }.reduce([], +)
+    }
+    
+    public func getTotalDeposited(allDepositActions: [DepositAction]) -> UInt64 {
         return allDepositActions.map { $0.amountDeposited }.reduce(0, +)
     }
     
-    public func getTotalWithdrawn(allWithdrawalActions: [WithdrawalAction]) throws -> UInt64 {
+    public func getTotalWithdrawn(allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
         return allWithdrawalActions.map { $0.amountWithdrawn }.reduce(0, +)
-    }
-    
-    public func validateSpec(previousBlock: Block) -> Bool {
-        return previousBlock.spec.rawCID == spec.rawCID
-    }
-    
-    public func validateParentState(parent: Block) -> Bool {
-        return parent.homestead.rawCID == parentHomestead.rawCID
-    }
-    
-    public func validateNextDifficulty(spec: ChainSpec, previousBlock: Block) -> Bool {
-        return nextDifficulty < spec.calculateMinimumDifficulty(previousDifficulty: previousBlock.nextDifficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
-    }
-    
-    public func validateState(previousBlock: Block) -> Bool {
-        return previousBlock.frontier.rawCID == homestead.rawCID
-    }
-    
-    public func validateIndex(previousBlock: Block) -> Bool {
-        return previousBlock.index + 1 == index
-    }
-    
-    public func validateBlockDifficulty(hash: UInt256, previousBlock: Block) -> Bool {
-        guard let blockHeaderData = toData() else { return false }
-        return previousBlock.nextDifficulty > UInt256.hash(blockHeaderData)
-    }
-    
-    public func validateTimestamp(previousBlock: Block) -> Bool {
-        return previousBlock.timestamp < timestamp && Int64(Date().timeIntervalSince1970 * 1000) >= timestamp
     }
 }
 
@@ -121,10 +119,10 @@ extension Block: Node {
     }
     
     public func set(properties: [PathSegment : any cashew.Address]) -> Block {
-        return Block(previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
+        return Block(previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
     }
 }
 
 public enum ValidationErrors: Error {
-    case transactionNotResolved, homesteadNotResolved, frontierNotResolved
+    case transactionNotResolved, homesteadNotResolved, frontierNotResolved, serializationError
 }
