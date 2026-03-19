@@ -122,17 +122,17 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
         await submitMinedBlock(directory: directory, block: block)
     }
 
-    // MARK: - Transaction Submission & Relay
+    // MARK: - Transaction Submission
+    //
+    // Transactions are added to the local mempool only. They reach the
+    // network when a miner includes them in a block and broadcasts that
+    // block. Individual transaction relay would require a dedicated
+    // message type in Ivy's protocol -- for now, miners pull from their
+    // own mempool and blocks carry transactions to other nodes.
 
     public func submitTransaction(directory: String, transaction: Transaction) async -> Bool {
         guard let network = networks[directory] else { return false }
-        let added = await network.submitTransaction(transaction)
-        if added {
-            if let txData = transaction.body.node?.toData() {
-                await network.broadcastBlock(cid: transaction.body.rawCID, data: txData)
-            }
-        }
-        return added
+        return await network.submitTransaction(transaction)
     }
 
     // MARK: - Block Submission (from mining)

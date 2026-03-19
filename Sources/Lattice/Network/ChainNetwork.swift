@@ -83,14 +83,12 @@ public actor ChainNetwork: IvyDelegate {
     }
 
     public func broadcastBlock(cid: String, data: Data) async {
-        let acornCid = ContentIdentifier(rawValue: cid)
-        await storage.store(cid: acornCid, data: data)
+        await fetcher.store(rawCid: cid, data: data)
         await ivy.broadcastBlock(cid: cid, data: data)
     }
 
     public func storeBlock(cid: String, data: Data) async {
-        let acornCid = ContentIdentifier(rawValue: cid)
-        await storage.store(cid: acornCid, data: data)
+        await fetcher.store(rawCid: cid, data: data)
     }
 
     // MARK: - Mempool Operations
