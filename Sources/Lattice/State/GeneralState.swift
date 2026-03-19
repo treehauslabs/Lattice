@@ -20,6 +20,21 @@ public extension GeneralStateHeader {
     }
     
     func updateState(allActions: [Action], fetcher: Fetcher) throws -> GeneralStateHeader {
+        if let dictNode = node {
+            for action in allActions {
+                if action.oldValue == nil {
+                    let existing = try? dictNode.get(key: action.key)
+                    if existing != nil { throw StateErrors.conflictingActions }
+                } else {
+                    guard let actual = try? dictNode.get(key: action.key) else {
+                        throw StateErrors.conflictingActions
+                    }
+                    guard actual == action.oldValue else {
+                        throw StateErrors.conflictingActions
+                    }
+                }
+            }
+        }
         var transforms = [[String]: Transform]()
         for action in allActions {
             if action.newValue == nil {

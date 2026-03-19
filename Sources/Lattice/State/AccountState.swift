@@ -20,6 +20,21 @@ public extension AccountStateHeader {
     }
     
     func updateState(allAccountActions: [AccountAction], fetcher: Fetcher) throws -> AccountStateHeader {
+        if let dictNode = node {
+            for action in allAccountActions {
+                if action.oldBalance == 0 {
+                    let existing = try? dictNode.get(key: action.owner)
+                    if existing != nil { throw StateErrors.conflictingActions }
+                } else {
+                    guard let actual = try? dictNode.get(key: action.owner) else {
+                        throw StateErrors.conflictingActions
+                    }
+                    guard String(describing: actual) == String(action.oldBalance) else {
+                        throw StateErrors.conflictingActions
+                    }
+                }
+            }
+        }
         var transforms = [[String]: Transform]()
         for action in allAccountActions {
             if action.newBalance == 0 {

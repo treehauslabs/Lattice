@@ -51,6 +51,8 @@ public extension DepositStateHeader {
     func prove(allDepositActions: [DepositAction], fetcher: Fetcher) async throws -> DepositStateHeader {
         var proofs = [[String]: SparseMerkleProof]()
         for depositAction in allDepositActions {
+            if depositAction.amountDeposited != depositAction.amountDemanded { throw StateErrors.conflictingActions }
+            if depositAction.amountDeposited == 0 { throw StateErrors.conflictingActions }
             let depositKey = DepositKey(depositAction: depositAction).description
             if proofs[[depositKey]] != nil { throw StateErrors.conflictingActions }
             proofs[[depositKey]] = .insertion
