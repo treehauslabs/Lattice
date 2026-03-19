@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build
+
+      - name: Run tests
+        run: |
+          swift test 2>&1 | tee test-output.txt
+          # Count passed tests from XCTest output
+          PASSED=$(grep -c "passed" test-output.txt || true)
+          FAILED=$(grep -c "failed" test-output.txt || true)
+          echo "Tests passed: $PASSED"
+          echo "Tests failed: $FAILED"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED test(s) failed"
+            exit 1
+          fi
+
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Build for iOS
+        run: xcodebuild build -scheme Lattice -destination 'generic/platform=iOS' -skipPackagePluginValidation
