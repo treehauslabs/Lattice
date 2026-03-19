@@ -512,25 +512,25 @@ Block difficulty comparison uses `UInt256` -- the SHA-256 hash of a block's cano
 - [x] Configurable ChainSpec with halving schedule and difficulty adjustment
 - [x] P-256 ECDSA transaction signing and verification
 - [x] JavaScript-based transaction/action filters
-- [ ] Fuzz testing for block validation edge cases
-- [ ] Property-based testing for state transition invariants
-- [ ] Formal specification of the cross-chain transfer protocol
+- [x] Fuzz testing for block validation edge cases
+- [x] Property-based testing for state transition invariants
+- [x] Formal specification of the cross-chain transfer protocol
 
 ### Phase 2: Networking
 
-- [ ] libp2p-based peer discovery and gossip protocol
-- [ ] Block propagation across the network
-- [ ] Transaction mempool with fee-based prioritization
-- [ ] Peer reputation scoring (tracked via `PeerState`)
-- [ ] Chain-specific peer sets (nodes subscribe to chains they care about)
+- [x] libp2p-based peer discovery and gossip protocol
+- [x] Block propagation across the network
+- [x] Transaction mempool with fee-based prioritization
+- [x] Peer reputation scoring (tracked via `PeerState`)
+- [x] Chain-specific peer sets (nodes subscribe to chains they care about)
 
 ### Phase 3: Storage and Sync
 
-- [ ] Persistent block and state storage backend (pluggable via `Fetcher` protocol)
-- [ ] IPFS/Bitswap integration for content-addressed data retrieval
-- [ ] Fast sync via state snapshots (download Merkle root + proofs, skip full replay)
-- [ ] Header-first sync for light clients
-- [ ] Pruning strategies for old state (only keep recent Merkle roots + proofs)
+- [x] Persistent block and state storage backend (pluggable via `Fetcher` protocol)
+- [x] Content-addressed data retrieval via Acorn CAS worker chain
+- [x] Fast sync via state snapshots (download Merkle root + proofs, skip full replay)
+- [x] Header-first sync for light clients
+- [x] Pruning strategies for old state (only keep recent Merkle roots + proofs)
 
 ### Phase 4: Light Clients and Mobile
 

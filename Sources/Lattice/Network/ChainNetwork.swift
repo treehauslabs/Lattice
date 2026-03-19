@@ -15,15 +15,20 @@ public actor ChainNetwork: IvyDelegate {
     public let directory: String
     public let ivy: Ivy
     public let fetcher: AcornFetcher
+    public let mempool: Mempool
     private let storage: any AcornCASWorker
     public weak var delegate: ChainNetworkDelegate?
+    private var subscribedChains: Set<String>
 
     public init(
         directory: String,
         config: IvyConfig,
-        storagePath: URL
+        storagePath: URL,
+        mempoolSize: Int = 10_000
     ) async throws {
         self.directory = directory
+        self.subscribedChains = Set([directory])
+        self.mempool = Mempool(maxSize: mempoolSize)
 
         let disk = try DiskCASWorker(
             directory: storagePath.appendingPathComponent(directory),
@@ -53,6 +58,26 @@ public actor ChainNetwork: IvyDelegate {
         await ivy.stop()
     }
 
+    // MARK: - Chain Subscription
+
+    public func subscribe(to chainDirectory: String) {
+        subscribedChains.insert(chainDirectory)
+    }
+
+    public func unsubscribe(from chainDirectory: String) {
+        subscribedChains.remove(chainDirectory)
+    }
+
+    public func isSubscribed(to chainDirectory: String) -> Bool {
+        subscribedChains.contains(chainDirectory)
+    }
+
+    public func subscribedDirectories() -> Set<String> {
+        subscribedChains
+    }
+
+    // MARK: - Block Operations
+
     public func announceBlock(cid: String) async {
         await ivy.announceBlock(cid: cid)
     }
@@ -68,6 +93,20 @@ public actor ChainNetwork: IvyDelegate {
         await storage.store(cid: acornCid, data: data)
     }
 
+    // MARK: - Mempool Operations
+
+    public func submitTransaction(_ transaction: Transaction) async -> Bool {
+        await mempool.add(transaction: transaction)
+    }
+
+    public func selectTransactionsForBlock(maxCount: Int) async -> [Transaction] {
+        await mempool.selectTransactions(maxCount: maxCount)
+    }
+
+    public func pruneConfirmedTransactions(txCIDs: Set<String>) async {
+        await mempool.removeAll(txCIDs: txCIDs)
+    }
+
     // MARK: - IvyDelegate
 
     nonisolated public func ivy(_ ivy: Ivy, didConnect peer: PeerID) {}
@@ -81,8 +120,6 @@ public actor ChainNetwork: IvyDelegate {
         Task { await delegate?.chainNetwork(self, didReceiveBlock: cid, data: data) }
     }
 }
-
-// MARK: - Ivy delegate setter extension
 
 extension Ivy {
     func setDelegate(_ delegate: IvyDelegate) {
