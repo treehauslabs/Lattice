@@ -24,7 +24,6 @@ jobs:
       - name: Run tests
         run: |
           swift test 2>&1 | tee test-output.txt
-          # Count passed tests from XCTest output
           PASSED=$(grep -c "passed" test-output.txt || true)
           FAILED=$(grep -c "failed" test-output.txt || true)
           echo "Tests passed: $PASSED"
@@ -33,6 +32,12 @@ jobs:
             echo "::error::$FAILED test(s) failed"
             exit 1
           fi
+
+      - name: Build LatticeNode executable
+        run: swift build --target LatticeNode -c release
+
+      - name: Verify LatticeNode runs
+        run: swift run LatticeNode --help
 
   build-ios:
     runs-on: macos-15
