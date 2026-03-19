@@ -51,11 +51,23 @@ public actor Lattice {
 
 public actor ChainLevel {
     public let chain: ChainState
-    public let children: [String: ChainLevel]
+    public private(set) var children: [String: ChainLevel]
 
     public init(chain: ChainState, children: [String: ChainLevel]) {
         self.chain = chain
         self.children = children
+    }
+
+    // MARK: - Dynamic Chain Discovery
+    //
+    // When a GenesisAction creates a new child chain, this method registers
+    // it in the hierarchy so it can receive merged-mined blocks going forward.
+
+    public func registerChildChain(directory: String, genesisBlock: Block) {
+        guard children[directory] == nil else { return }
+        let childChain = ChainState.fromGenesis(block: genesisBlock)
+        let childLevel = ChainLevel(chain: childChain, children: [:])
+        children[directory] = childLevel
     }
 
     // MARK: - Child Block Extraction (Merged Mining)
@@ -81,6 +93,15 @@ public actor ChainLevel {
         if allChildEntries.isEmpty { return }
 
         let parentBlockIndex = await chain.getHighestBlockIndex()
+
+        for (directory, childBlockHeader) in allChildEntries {
+            if children[directory] == nil {
+                if let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node,
+                   childBlock.index == 0, childBlock.previousBlock == nil {
+                    registerChildChain(directory: directory, genesisBlock: childBlock)
+                }
+            }
+        }
 
         await withTaskGroup(of: Void.self) { group in
             for (directory, childBlockHeader) in allChildEntries {

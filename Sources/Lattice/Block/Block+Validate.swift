@@ -38,6 +38,7 @@ public extension Block {
         }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
+        if !validateBlockSize(spec: specNode) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
         let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
         let genesisTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
@@ -68,6 +69,7 @@ public extension Block {
         if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
+        if !validateBlockSize(spec: specNode) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
         let nexusTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
         if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: nexusTotalFees) { return false }
@@ -111,6 +113,7 @@ public extension Block {
         if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpecNode) }) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
+        if !validateBlockSize(spec: specNode) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
         let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
         let allWithdrawalActions = getAllWithdrawalActions(transactionBodies: transactionBodies)
@@ -186,6 +189,11 @@ public extension Block {
     
     func validateMaxTransactionCount(spec: ChainSpec, transactionBodies: [TransactionBody]) -> Bool {
         return transactionBodies.count <= spec.maxNumberOfTransactionsPerBlock
+    }
+
+    func validateBlockSize(spec: ChainSpec) -> Bool {
+        guard let blockData = toData() else { return false }
+        return blockData.count <= spec.maxBlockSize
     }
     
     func validateGenesisTransactions(fetcher: Fetcher, transactionBodies: [TransactionBody], parentSpec: ChainSpec? = nil) async throws -> Bool {

@@ -9,6 +9,8 @@ public struct ChainSpec: Scalar {
     public let maxNumberOfTransactionsPerBlock: UInt64
     // Maximum number of bytes actions can add to the world state per block
     public let maxStateGrowth: Int
+    // Maximum serialized block size in bytes (prevents memory exhaustion)
+    public let maxBlockSize: Int
     // Number of blocks mined by creators before public mining begins (must be < 2^63). Controls initial token disribution.
     public let premine: UInt64
     // Target time interval between blocks in milliseconds. Similar to Bitcoin's 10-minute target.
@@ -17,29 +19,35 @@ public struct ChainSpec: Scalar {
     public let initialRewardExponent: UInt8
     // Maximum difficulty change factor (e.g., 4 means max 4x increase/decrease)
     public static let maxDifficultyChange: UInt8 = 2
+    // Number of blocks over which difficulty is averaged. Higher = more stable.
+    public let difficultyAdjustmentWindow: UInt64
     // List of validation rules for transactions in JavaScript.
     public let transactionFilters: [String]
     public let actionFilters: [String]
-    
+
     // Cached values for optimization
     private var _halvingInterval: UInt64?
-    
+
     public init(
         directory: String = "Nexus",
         maxNumberOfTransactionsPerBlock: UInt64,
         maxStateGrowth: Int,
+        maxBlockSize: Int = 1_000_000,
         premine: UInt64,
         targetBlockTime: UInt64,
         initialRewardExponent: UInt8,
+        difficultyAdjustmentWindow: UInt64 = 10,
         transactionFilters: [String] = [],
         actionFilters: [String] = []
     ) {
         self.directory = directory
         self.maxNumberOfTransactionsPerBlock = maxNumberOfTransactionsPerBlock
         self.maxStateGrowth = maxStateGrowth
+        self.maxBlockSize = maxBlockSize
         self.premine = premine
         self.targetBlockTime = targetBlockTime
         self.initialRewardExponent = initialRewardExponent
+        self.difficultyAdjustmentWindow = difficultyAdjustmentWindow
         self.transactionFilters = transactionFilters
         self.actionFilters = actionFilters
     }
@@ -124,27 +132,43 @@ public extension ChainSpec {
     
     /// Calculates exact minimum required difficulty based on block timing
     /// Lower difficulty value means harder to mine (smaller target)
-    func calculateMinimumDifficulty(previousDifficulty: UInt256, blockTimestamp: Int64, previousTimestamp: Int64) -> UInt256 {
-        let actualTime = blockTimestamp - previousTimestamp
-        let targetTime = Int64(targetBlockTime) // Already in milliseconds
-        
-        // Calculate exact difficulty adjustment factor based on timing
-        // Use precise integer arithmetic to avoid floating point errors
-        
+    /// Single-pair difficulty calculation (used when only one block pair is available).
+    func calculatePairDifficulty(previousDifficulty: UInt256, actualTime: Int64) -> UInt256 {
+        let targetTime = Int64(targetBlockTime)
+        if actualTime <= 0 { return previousDifficulty / UInt256(ChainSpec.maxDifficultyChange) }
         if actualTime < targetTime {
-            // Blocks too fast - increase difficulty (divide by factor, making target smaller)
-            // Calculate adjustment factor: targetTime / actualTime, capped by maxDifficultyChange
-            let adjustmentFactor = min(Int64(ChainSpec.maxDifficultyChange), targetTime / actualTime)
+            let adjustmentFactor = min(Int64(ChainSpec.maxDifficultyChange), targetTime / max(actualTime, 1))
             return previousDifficulty / UInt256(adjustmentFactor)
         } else if actualTime > targetTime {
-            // Blocks too slow - decrease difficulty (multiply by factor, making target larger)
-            // Calculate adjustment factor: actualTime / targetTime, capped by maxDifficultyChange
             let adjustmentFactor = min(Int64(ChainSpec.maxDifficultyChange), actualTime / targetTime)
             return previousDifficulty * UInt256(adjustmentFactor)
-        } else {
-            // Exact target timing - no adjustment needed
+        }
+        return previousDifficulty
+    }
+
+    /// Calculates difficulty based on a single block pair. Used during validation
+    /// when the full ancestor window isn't available locally.
+    func calculateMinimumDifficulty(previousDifficulty: UInt256, blockTimestamp: Int64, previousTimestamp: Int64) -> UInt256 {
+        return calculatePairDifficulty(previousDifficulty: previousDifficulty, actualTime: blockTimestamp - previousTimestamp)
+    }
+
+    /// Calculates difficulty using a windowed average of ancestor block times.
+    /// Uses up to `difficultyAdjustmentWindow` ancestor timestamps to compute
+    /// the average block time, then adjusts difficulty based on how that average
+    /// compares to the target. This prevents single-block timing from causing
+    /// large difficulty swings.
+    func calculateWindowedDifficulty(previousDifficulty: UInt256, ancestorTimestamps: [Int64]) -> UInt256 {
+        guard ancestorTimestamps.count >= 2 else {
             return previousDifficulty
         }
+        let sorted = ancestorTimestamps.sorted(by: >)
+        let newest = sorted.first!
+        let oldest = sorted.last!
+        let totalTime = newest - oldest
+        let blockCount = Int64(sorted.count - 1)
+        guard blockCount > 0 && totalTime > 0 else { return previousDifficulty }
+        let averageTime = totalTime / blockCount
+        return calculatePairDifficulty(previousDifficulty: previousDifficulty, actualTime: averageTime)
     }
     
     /// Validates that new difficulty meets minimum threshold
@@ -197,42 +221,45 @@ public extension ChainSpec {
     
     /// Bitcoin-like default configuration
     static let bitcoin: ChainSpec = ChainSpec(
-        maxNumberOfTransactionsPerBlock: 3000,     // ~3000 transactions per block (typical Bitcoin block)
-        maxStateGrowth: 1_000_000,                 // 1MB state growth per block
-        premine: 0,                                // No premine
-        targetBlockTime: 600_000,                  // 10 minute blocks (600 seconds = 600,000 ms)
-        initialRewardExponent: 26,                 // 50 BTC (2^26 satoshis ≈ 67M, but conceptually 50)
-        transactionFilters: []
+        maxNumberOfTransactionsPerBlock: 3000,
+        maxStateGrowth: 1_000_000,
+        maxBlockSize: 4_000_000,
+        premine: 0,
+        targetBlockTime: 600_000,
+        initialRewardExponent: 26,
+        difficultyAdjustmentWindow: 2016
     )
-    
-    /// Ethereum-like configuration  
+
     static let ethereum: ChainSpec = ChainSpec(
-        maxNumberOfTransactionsPerBlock: 1000,     // ~1000 transactions per block (Ethereum typical)
-        maxStateGrowth: 24_000_000,                // Higher state growth for smart contracts
-        premine: 72_000_000,                       // ETH premine
-        targetBlockTime: 12_000,                   // 12 second blocks (12 seconds = 12,000 ms)
-        initialRewardExponent: 24,                 // ~16 ETH initial reward
-        transactionFilters: []
+        maxNumberOfTransactionsPerBlock: 1000,
+        maxStateGrowth: 24_000_000,
+        maxBlockSize: 30_000_000,
+        premine: 72_000_000,
+        targetBlockTime: 12_000,
+        initialRewardExponent: 24,
+        difficultyAdjustmentWindow: 20
     )
-    
-    /// Fast development chain
+
     static let development: ChainSpec = ChainSpec(
         maxNumberOfTransactionsPerBlock: 100,
         maxStateGrowth: 100_000,
+        maxBlockSize: 1_000_000,
         premine: 1000,
-        targetBlockTime: 1_000,                    // 1 second blocks (1 second = 1,000 ms)
-        initialRewardExponent: 10,                 // Small rewards
-        transactionFilters: []
+        targetBlockTime: 1_000,
+        initialRewardExponent: 10,
+        difficultyAdjustmentWindow: 5
     )
     
     /// Validates chain spec parameters
     var isValid: Bool {
         return maxNumberOfTransactionsPerBlock > 0 &&
                maxStateGrowth > 0 &&
+               maxBlockSize > 0 &&
                targetBlockTime > 0 &&
                initialRewardExponent < totalExponent &&
                initialRewardExponent > 0 &&
                ChainSpec.maxDifficultyChange > 0 &&
-               premine < halvingInterval  // Premine must not exceed first halving point
+               difficultyAdjustmentWindow > 0 &&
+               premine < halvingInterval
     }
 }
