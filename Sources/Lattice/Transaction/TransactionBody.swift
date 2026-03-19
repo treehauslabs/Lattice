@@ -14,8 +14,11 @@ public struct TransactionBody: Scalar {
     let fee: UInt64
     let nonce: UInt64
     
-    // withdrawalActions should be fully resolved
     func withdrawalsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
+        for withdrawal in withdrawalActions {
+            if withdrawal.amountWithdrawn > withdrawal.amountDemanded { return false }
+            if withdrawal.amountWithdrawn == 0 { return false }
+        }
         async let proofOfDeposits = homestead.depositState.proveExistenceOfCorrespondingDeposit(withdrawalActions: withdrawalActions, fetcher: fetcher)
         async let proofOfReceipts = await parentState.receiptState.proveExistenceOfCorrespondingReceipt(directory: directory, withdrawalActions: withdrawalActions, fetcher: fetcher)
         let (_, _) = try await (proofOfDeposits, proofOfReceipts)

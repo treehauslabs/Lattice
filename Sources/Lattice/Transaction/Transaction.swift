@@ -9,6 +9,7 @@ public struct Transaction {
     let body: HeaderImpl<TransactionBody>
     
     func signaturesAreValid() -> Bool {
+        if signatures.isEmpty { return false }
         for (publicKeyHex, signature) in signatures {
             if !CryptoUtils.verify(message: body.rawCID, signature: signature, publicKeyHex: publicKeyHex) {
                 return false

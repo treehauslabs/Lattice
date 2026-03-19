@@ -145,14 +145,24 @@ public extension Block {
         let totalWithdrawn = getTotalWithdrawn(allWithdrawalActions: allWithdrawalActions)
         let totalBalanceBefore = allAccountActions.map { $0.oldBalance }.reduce(0, +)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
-        return totalBalanceAfter <= totalBalanceBefore - totalDeposited + totalWithdrawn + reward + totalFees
+        let (income, incomeOverflow) = totalBalanceBefore.addingReportingOverflow(totalWithdrawn)
+        let (incomeWithReward, rewardOverflow) = income.addingReportingOverflow(reward)
+        let (incomeWithFees, feeOverflow) = incomeWithReward.addingReportingOverflow(totalFees)
+        if incomeOverflow || rewardOverflow || feeOverflow { return false }
+        guard incomeWithFees >= totalDeposited else { return false }
+        let available = incomeWithFees - totalDeposited
+        return totalBalanceAfter <= available
     }
 
     func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
         let totalDeposited = getTotalDeposited(allDepositActions: allDepositActions)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
-        return totalBalanceAfter <= premineAmount - totalDeposited + totalFees
+        let (incomeWithFees, overflow) = premineAmount.addingReportingOverflow(totalFees)
+        if overflow { return false }
+        guard incomeWithFees >= totalDeposited else { return false }
+        let available = incomeWithFees - totalDeposited
+        return totalBalanceAfter <= available
     }
     
     func validateSpec(previousBlock: Block) -> Bool {
@@ -180,7 +190,12 @@ public extension Block {
     }
     
     func validateTimestamp(previousBlock: Block) -> Bool {
-        return previousBlock.timestamp < timestamp && Int64(Date().timeIntervalSince1970 * 1000) >= timestamp
+        if previousBlock.timestamp >= timestamp { return false }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        if timestamp > now { return false }
+        let maxDrift: Int64 = 2 * 60 * 60 * 1000
+        if now - timestamp > maxDrift { return false }
+        return true
     }
     
     func validateStateDeltaSize(spec: ChainSpec, transactionBodies: [TransactionBody]) throws -> Bool {
