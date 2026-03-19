@@ -86,13 +86,19 @@ public actor ChainLevel {
     func extractAndProcessChildBlocks(
         parentBlock: Block,
         parentBlockHeader: BlockHeader,
-        fetcher: Fetcher
+        fetcher: Fetcher,
+        ancestorSpecs: [ChainSpec] = []
     ) async {
         guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return }
         guard let allChildEntries = try? childBlocksNode.allKeysAndValues() else { return }
         if allChildEntries.isEmpty { return }
 
         let parentBlockIndex = await chain.getHighestBlockIndex()
+
+        var allAncestorSpecs = ancestorSpecs
+        if let parentSpec = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
+            allAncestorSpecs.append(parentSpec)
+        }
 
         for (directory, childBlockHeader) in allChildEntries {
             if children[directory] == nil {
@@ -107,12 +113,13 @@ public actor ChainLevel {
             for (directory, childBlockHeader) in allChildEntries {
                 guard let childLevel = children[directory] else { continue }
 
-                group.addTask { [parentBlockHeader, parentBlockIndex] in
+                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs] in
                     guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else { return }
 
                     let isValid = await childLevel.validateChildBlock(
                         childBlock: childBlock,
                         parentBlock: parentBlock,
+                        ancestorSpecs: allAncestorSpecs,
                         fetcher: fetcher
                     )
                     if !isValid { return }
@@ -126,13 +133,11 @@ public actor ChainLevel {
                         await childLevel.propagateReorgToChildren(reorg: reorg)
                     }
 
-                    // Recursively extract grandchild blocks. If this child
-                    // block is valid but contains invalid grandchild blocks,
-                    // those grandchildren are skipped independently.
                     await childLevel.extractAndProcessChildBlocks(
                         parentBlock: childBlock,
                         parentBlockHeader: childBlockHeader,
-                        fetcher: fetcher
+                        fetcher: fetcher,
+                        ancestorSpecs: allAncestorSpecs
                     )
                 }
             }
@@ -148,55 +153,43 @@ public actor ChainLevel {
     func validateChildBlock(
         childBlock: Block,
         parentBlock: Block,
+        ancestorSpecs: [ChainSpec] = [],
         fetcher: Fetcher
     ) async -> Bool {
-        // Timestamp must match parent (merged mining requirement)
         if parentBlock.timestamp != childBlock.timestamp { return false }
 
-        // If the child block has a previous block, validate chain continuity
         if let previousBlockHeader = childBlock.previousBlock {
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
-                // Previous block can't be resolved -- may arrive later.
-                // Still accept into consensus (submitBlock handles orphans).
                 return true
             }
-
-            // Spec must be consistent with the chain
             if previousBlock.spec.rawCID != childBlock.spec.rawCID { return false }
-
-            // State continuity: homestead must equal previous frontier
             if previousBlock.frontier.rawCID != childBlock.homestead.rawCID { return false }
-
-            // Index must be sequential
             if previousBlock.index + 1 != childBlock.index { return false }
-
-            // Timestamp must be after previous
             if previousBlock.timestamp >= childBlock.timestamp { return false }
         } else {
-            // No previous block means this is a genesis block on the child chain.
-            // Genesis validation is handled by GenesisAction in the parent
-            // chain's transaction -- not here. Accept it.
             if childBlock.index != 0 { return false }
+            if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
+            let emptyState = LatticeStateHeader(node: LatticeState.emptyState())
+            if childBlock.homestead.rawCID != emptyState.rawCID { return false }
         }
 
-        // Validate child chain's own filters
+        guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
+        guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
+        let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
+
         if let specNode = childBlock.spec.node {
-            guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
-            guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
-            let txHeaders = txKeysAndValues.values
-            let txs = txHeaders.compactMap { $0.node }
-            let bodies = txs.compactMap { $0.body.node }
             if !bodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
             if !bodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
         }
 
-        // Validate against parent chain's filters (filter inheritance)
         if let parentSpecNode = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
-            guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
-            guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
-            let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
             if !bodies.allSatisfy({ $0.verifyFilters(spec: parentSpecNode) }) { return false }
             if !bodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpecNode) }) { return false }
+        }
+
+        for ancestorSpec in ancestorSpecs {
+            if !bodies.allSatisfy({ $0.verifyFilters(spec: ancestorSpec) }) { return false }
+            if !bodies.allSatisfy({ $0.verifyActionFilters(spec: ancestorSpec) }) { return false }
         }
 
         return true
