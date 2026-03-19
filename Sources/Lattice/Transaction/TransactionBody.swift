@@ -61,7 +61,9 @@ public struct TransactionBody: Scalar {
     
     func verifyFilter(_ filter: String) -> Bool {
         guard let context = JSContext() else { return false }
-        guard let transactionData = try? JSONEncoder().encode(self) else { return false }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let transactionData = try? encoder.encode(self) else { return false }
         guard let transactionJSON = String(bytes: transactionData, encoding: .utf8) else { return false }
         context.evaluateScript(filter)
         guard let transactionFilter = context.objectForKeyedSubscript("transactionFilter") else { return false }

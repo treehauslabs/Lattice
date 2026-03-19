@@ -35,16 +35,20 @@ public struct Action: Codable, Sendable {
     }
     
     public func toData() -> Data? {
-        return try? JSONEncoder().encode(self)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(self)
     }
-    
+
     func verifyFilters(spec: ChainSpec) -> Bool {
         return spec.actionFilters.allSatisfy { verifyFilter($0) }
     }
-    
+
     func verifyFilter(_ filter: String) -> Bool {
         guard let context = JSContext() else { return false }
-        guard let actionData = try? JSONEncoder().encode(self) else { return false }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let actionData = try? encoder.encode(self) else { return false }
         guard let actionJson = String(bytes: actionData, encoding: .utf8) else { return false }
         context.evaluateScript(filter)
         guard let transactionFilter = context.objectForKeyedSubscript("actionFilter") else { return false }
