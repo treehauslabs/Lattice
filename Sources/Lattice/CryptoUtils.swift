@@ -46,14 +46,13 @@ public struct CryptoUtils {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
     
-    public static func ripemd160(_ input: String) -> String {
-        return sha256(input)
+    public static func doubleSha256(_ input: String) -> String {
+        return sha256(sha256(input))
     }
-    
+
     public static func createAddress(from publicKey: String) -> String {
-        let hash1 = sha256(publicKey)
-        let hash2 = ripemd160(hash1)
-        return "1" + hash2.prefix(32)
+        let hash = doubleSha256(publicKey)
+        return "1" + hash.prefix(32)
     }
 }
 

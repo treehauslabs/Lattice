@@ -17,6 +17,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     
     public init?(_ description: String) {
         let split = description.split(separator: "/", maxSplits: 4, omittingEmptySubsequences: true)
+        guard split.count >= 4 else { return nil }
         let directory = String(split[0])
         let demander = String(split[1])
         guard let amountDemanded = UInt64(String(split[2])) else { return nil }
@@ -28,7 +29,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     }
     
     public var description: String {
-        return "\(directory)/\(demander)/\(amountDemanded.description)\(nonce.description)"
+        return "\(directory)/\(demander)/\(amountDemanded.description)/\(nonce.description)"
     }
 }
 
@@ -61,7 +62,7 @@ public extension ReceiptStateHeader {
             let receiptKey = ReceiptKey(receiptAction: receiptAction).description
             transforms[[receiptKey]] = .insert(receiptAction.withdrawer)
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

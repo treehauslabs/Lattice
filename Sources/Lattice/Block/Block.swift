@@ -101,7 +101,7 @@ public struct Block: Hashable {
 }
 
 extension Block: Node {
-    public func get(property: PathSegment) -> (any cashew.Address)? {
+    public func get(property: PathSegment) -> (any cashew.Header)? {
         switch property {
             case PREVIOUS_BLOCK_PROPERTY: return previousBlock
             case TRANSACTIONS_PROPERTY: return transactions
@@ -118,7 +118,7 @@ extension Block: Node {
         return BLOCK_PROPERTIES
     }
     
-    public func set(properties: [PathSegment : any cashew.Address]) -> Block {
+    public func set(properties: [PathSegment : any cashew.Header]) -> Block {
         return Block(previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
     }
 }

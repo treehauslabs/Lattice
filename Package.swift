@@ -17,7 +17,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
-        .package(url: "https://github.com/pumperknickle/cashew.git", from: "0.0.8"),
+        .package(url: "https://github.com/treehauslabs/cashew.git", branch: "master"),
         .package(url: "https://github.com/hyugit/UInt256.git", branch: "master"),
         .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1"),
         .package(url: "https://github.com/JohnSundell/CollectionConcurrencyKit.git", from: "0.2.0"),
@@ -29,7 +29,8 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "cashew", package: "cashew"),
                 .product(name: "CID", package: "swift-cid"),
-                .product(name: "UInt256", package: "UInt256")
+                .product(name: "UInt256", package: "UInt256"),
+                .product(name: "CollectionConcurrencyKit", package: "CollectionConcurrencyKit")
             ]),
         .executableTarget(
             name: "LatticeDemo",

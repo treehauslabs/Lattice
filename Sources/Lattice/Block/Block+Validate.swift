@@ -15,7 +15,7 @@ public extension Block {
         return UInt256.hash(hashString.toData() ?? Data())
     }
     
-    func validateGenesis(fetcher: Fetcher, directory: String?) async throws -> Bool {
+    func validateGenesis(fetcher: Fetcher, directory: String?, parentSpec: ChainSpec? = nil) async throws -> Bool {
         if previousBlock != nil { return false }
         if Int64(Date().timeIntervalSince1970 * 1000) < timestamp { return false }
         if index != 0 { return false }
@@ -32,12 +32,17 @@ public extension Block {
         if specNode.directory != directory { return false }
         if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
         if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
+        if let parentSpec = parentSpec {
+            if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: parentSpec) }) { return false }
+            if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpec) }) { return false }
+        }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
         let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
-        if try !validateBalanceChangesForGenesis(spec: specNode, allDepositActions: allDepositActions, allAccountActions: allAccountActions) { return false }
-        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies) { return false }
+        let genesisTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        if try !validateBalanceChangesForGenesis(spec: specNode, allDepositActions: allDepositActions, allAccountActions: allAccountActions, totalFees: genesisTotalFees) { return false }
+        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
         if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: allDepositActions, allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
@@ -64,8 +69,9 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
-        if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions) { return false }
-        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies) { return false }
+        let nexusTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: nexusTotalFees) { return false }
+        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
         if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: [], allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
@@ -79,10 +85,12 @@ public extension Block {
         guard let blockHeaderData = toData() else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
+        if !validateParentState(parent: parentChainBlock) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
         if !validateTimestamp(previousBlock: previousBlockNode) { return false }
         if parentChainBlock.timestamp != timestamp { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
+        guard let parentSpecNode = try await parentChainBlock.spec.resolve(fetcher: fetcher).node else { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode) { return false }
         guard let transactionsNode = try await transactions.resolveRecursive(fetcher: fetcher).node else { return false }
         let txHeaders = try transactionsNode.allKeysAndValues().values
@@ -99,13 +107,16 @@ public extension Block {
         let transactionBodies = transactionBodiesMaybe.map { $0! }
         if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
         if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
+        if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: parentSpecNode) }) { return false }
+        if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpecNode) }) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
         let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
         let allWithdrawalActions = getAllWithdrawalActions(transactionBodies: transactionBodies)
-        if try !validateBalanceChanges(spec: specNode, allDepositActions: allDepositActions, allWithdrawalActions: allWithdrawalActions, allAccountActions: allAccountActions) { return false }
-        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies) { return false }
+        let childTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        if try !validateBalanceChanges(spec: specNode, allDepositActions: allDepositActions, allWithdrawalActions: allWithdrawalActions, allAccountActions: allAccountActions, totalFees: childTotalFees) { return false }
+        if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
         if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: allDepositActions, allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: allWithdrawalActions, fetcher: fetcher) { return false }
         return true
     }
@@ -125,20 +136,20 @@ public extension Block {
         return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.withdrawalState.rawCID == finalUpdatedHomestead.withdrawalState.rawCID
     }
     
-    func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction]) throws -> Bool {
+    func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let reward = spec.rewardAtBlock(index)
         let totalDeposited = getTotalDeposited(allDepositActions: allDepositActions)
         let totalWithdrawn = getTotalWithdrawn(allWithdrawalActions: allWithdrawalActions)
         let totalBalanceBefore = allAccountActions.map { $0.oldBalance }.reduce(0, +)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
-        return totalBalanceAfter <= totalBalanceBefore - totalDeposited + totalWithdrawn + reward
+        return totalBalanceAfter <= totalBalanceBefore - totalDeposited + totalWithdrawn + reward + totalFees
     }
-    
-    func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction]) throws -> Bool {
+
+    func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
         let totalDeposited = getTotalDeposited(allDepositActions: allDepositActions)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
-        return totalBalanceAfter <= premineAmount - totalDeposited
+        return totalBalanceAfter <= premineAmount - totalDeposited + totalFees
     }
     
     func validateSpec(previousBlock: Block) -> Bool {
@@ -150,7 +161,11 @@ public extension Block {
     }
     
     func validateNextDifficulty(spec: ChainSpec, previousBlock: Block) -> Bool {
-        return nextDifficulty < spec.calculateMinimumDifficulty(previousDifficulty: difficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
+        let expected = spec.calculateMinimumDifficulty(previousDifficulty: difficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
+        let maxDifficultyChange = UInt256(ChainSpec.maxDifficultyChange)
+        let lowerBound = expected / maxDifficultyChange
+        let upperBound = expected * maxDifficultyChange
+        return nextDifficulty >= lowerBound && nextDifficulty <= upperBound
     }
     
     func validateState(previousBlock: Block) -> Bool {
@@ -173,9 +188,9 @@ public extension Block {
         return transactionBodies.count <= spec.maxNumberOfTransactionsPerBlock
     }
     
-    func validateGenesisTransactions(fetcher: Fetcher, transactionBodies: [TransactionBody]) async throws -> Bool {
+    func validateGenesisTransactions(fetcher: Fetcher, transactionBodies: [TransactionBody], parentSpec: ChainSpec? = nil) async throws -> Bool {
         return try await !transactionBodies.concurrentMap { transactionBody in
-            try await transactionBody.genesisActionsAreValid(fetcher: fetcher)
+            try await transactionBody.genesisActionsAreValid(fetcher: fetcher, parentSpec: parentSpec)
         }.contains(false)
     }
 }

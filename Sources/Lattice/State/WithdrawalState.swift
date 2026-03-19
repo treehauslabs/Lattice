@@ -47,7 +47,7 @@ public extension WithdrawalStateHeader {
             let depositKey = DepositKey(withdrawalAction: withdrawalAction).description
             transforms[[depositKey]] = .insert(String(WithdrawalValue(withdrawer: withdrawalAction.withdrawer, amountWithdrawn: withdrawalAction.amountWithdrawn)))
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

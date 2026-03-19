@@ -10,11 +10,11 @@ public extension GeneralStateHeader {
             if proofs[[action.key]] != nil { throw StateErrors.conflictingActions }
             if action.newValue == nil {
                 proofs[[action.key]] = .deletion
-            }
-            if action.oldValue == nil {
+            } else if action.oldValue == nil {
                 proofs[[action.key]] = .insertion
+            } else {
+                proofs[[action.key]] = .mutation
             }
-            proofs[[action.key]] = .mutation
         }
         return try await proof(paths: proofs, fetcher: fetcher)
     }
@@ -32,7 +32,7 @@ public extension GeneralStateHeader {
             }
             transforms[[action.key]] = .update(action.newValue!)
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

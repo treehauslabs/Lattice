@@ -35,7 +35,7 @@ public struct LatticeState: Node {
         return Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), depositState: DepositStateHeader(node: DepositState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), receiptState: ReceiptStateHeader(node: ReceiptState()), withdrawalState: WithdrawalStateHeader(node: WithdrawalState()), transactionState: TransactionStateHeader(node: TransactionState()))
     }
     
-    public func get(property: PathSegment) -> (any cashew.Address)? {
+    public func get(property: PathSegment) -> (any cashew.Header)? {
         switch property {
             case ACCOUNT_STATE_PROPERTY: return accountState
             case GENERAL_STATE_PROPERTY: return generalState
@@ -53,7 +53,7 @@ public struct LatticeState: Node {
         return LATTICE_STATE_PROPERTIES
     }
     
-    public func set(properties: [PathSegment : any cashew.Address]) -> LatticeState {
+    public func set(properties: [PathSegment : any cashew.Header]) -> LatticeState {
         return Self(accountState: properties[ACCOUNT_STATE_PROPERTY] as! AccountStateHeader, generalState: properties[GENERAL_STATE_PROPERTY] as! GeneralStateHeader, depositState: properties[DEPOSIT_STATE_PROPERTY] as! DepositStateHeader, peerState: properties[PEER_STATE_PROPERTY] as! PeerStateHeader, genesisState: properties[GENESIS_STATE_PROPERTY] as! GenesisStateHeader, receiptState: properties[RECEIPT_STATE_PROPERTY] as! ReceiptStateHeader, withdrawalState: properties[WITHDRAWAL_STATE_PROPERTY] as! WithdrawalStateHeader, transactionState: properties[TRANSACTION_STATE_PROPERTY] as! TransactionStateHeader)
     }
     

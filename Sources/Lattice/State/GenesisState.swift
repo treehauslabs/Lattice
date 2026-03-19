@@ -18,7 +18,7 @@ public extension GenesisStateHeader {
         for genesisAction in allGenesisActions {
             transforms[[genesisAction.directory]] = .insert(String(genesisAction.block))
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

@@ -1,22 +1,22 @@
 {
-  "originHash" : "a7b07ed88231a079d3f0a97ae07c6af0029dc995ef6e268f9cabce6272658010",
+  "originHash" : "9246fa81d80f322b3dec2a34efab1042870e9f4beb64612b89879206548ad0ca",
   "pins" : [
     {
       "identity" : "arraytrie",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pumperknickle/ArrayTrie.git",
+      "location" : "https://github.com/treehauslabs/ArrayTrie.git",
       "state" : {
-        "revision" : "eab17dd07357aa8a86b728155aa624263af8cb48",
-        "version" : "0.1.7"
+        "revision" : "11948258e0db3e8a6f93fe3448cfaed6c303e7dd",
+        "version" : "1.0.0"
       }
     },
     {
       "identity" : "cashew",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pumperknickle/cashew.git",
+      "location" : "https://github.com/treehauslabs/cashew.git",
       "state" : {
-        "revision" : "26e0b1e1ddfbc9bbf3b5e405e5c469697c411c05",
-        "version" : "0.0.8"
+        "branch" : "master",
+        "revision" : "d4620d32c6625b9db86643ddf60c1aba2d5d7eae"
       }
     },
     {

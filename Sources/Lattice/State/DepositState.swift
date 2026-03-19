@@ -21,6 +21,7 @@ public struct DepositKey: LosslessStringConvertible {
     
     public init?(_ description: String) {
         let split = description.split(separator: "/", maxSplits: 3, omittingEmptySubsequences: true)
+        guard split.count >= 3 else { return nil }
         let demander = String(split[0])
         guard let amountDemanded = UInt64(String(split[1])) else { return nil }
         guard let nonce = UInt128(String(split[2])) else { return nil }
@@ -63,7 +64,7 @@ public extension DepositStateHeader {
             let depositKey = DepositKey(depositAction: depositAction).description
             transforms[[depositKey]] = .insert(String(depositAction.amountDeposited))
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

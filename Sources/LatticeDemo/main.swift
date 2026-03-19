@@ -1,62 +1,113 @@
-//import Foundation
-//import Lattice
-//
-//print("🚀 Lattice Blockchain Demo")
-//print("=" * 50)
-//
-//print("1️⃣ Creating blockchain with difficulty 2...")
-//let blockchain = Blockchain(difficulty: 2, miningReward: 50.0)
-//
-//print("2️⃣ Creating wallets...")
-//let alice = Wallet()
-//let bob = Wallet()
-//let miner = Wallet()
-//
-//print("Alice's address: \(alice.address)")
-//print("Bob's address: \(bob.address)")
-//print("Miner's address: \(miner.address)")
-//
-//print("\n3️⃣ Mining genesis rewards to Alice...")
-//let genesis = blockchain.minePendingTransactions(miningRewardAddress: alice.address)
-//print("Genesis block mined: \(genesis?.hash.prefix(16) ?? "failed")...")
-//
-//print("Alice's balance: \(alice.getBalance(from: blockchain)) coins")
-//
-//print("\n4️⃣ Creating transaction from Alice to Bob...")
-//if let transaction = alice.createTransaction(to: bob.address, amount: 20.0, fee: 1.0) {
-//    let success = blockchain.addTransaction(transaction)
-//    print("Transaction added to mempool: \(success)")
-//} else {
-//    print("❌ Failed to create transaction")
-//}
-//
-//print("\n5️⃣ Mining pending transactions...")
-//let block1 = blockchain.minePendingTransactions(miningRewardAddress: miner.address)
-//print("Block 1 mined: \(block1?.hash.prefix(16) ?? "failed")...")
-//
-//print("\n6️⃣ Final balances:")
-//print("Alice: \(alice.getBalance(from: blockchain)) coins")
-//print("Bob: \(bob.getBalance(from: blockchain)) coins")
-//print("Miner: \(miner.getBalance(from: blockchain)) coins")
-//
-//print("\n7️⃣ Validating blockchain...")
-//let validation = Validator.validateBlockchain(blockchain)
-//print("Blockchain is valid: \(validation.isValid)")
-//if !validation.isValid {
-//    for error in validation.errors {
-//        print("❌ \(error)")
-//    }
-//}
-//
-//print("\n8️⃣ Blockchain statistics:")
-//print("Total blocks: \(blockchain.blocks.count)")
-//print("Latest block hash: \(blockchain.latestBlock?.hash.prefix(16) ?? "none")...")
-//print("Chain is valid: \(blockchain.isChainValid())")
-//
-//print("\n✅ Demo completed!")
-//
-//extension String {
-//    static func *(lhs: String, rhs: Int) -> String {
-//        return String(repeating: lhs, count: rhs)
-//    }
-//}
+import Lattice
+import UInt256
+import cashew
+import Foundation
+
+struct NoopFetcher: Fetcher {
+    func fetch(rawCid: String) async throws -> Data {
+        throw NSError(domain: "NoopFetcher", code: 1)
+    }
+}
+
+print("Lattice Demo")
+print("============")
+print()
+
+let spec = ChainSpec(
+    directory: "Nexus",
+    maxNumberOfTransactionsPerBlock: 100,
+    maxStateGrowth: 100_000,
+    premine: 0,
+    targetBlockTime: 1_000,
+    initialRewardExponent: 10
+)
+
+print("Chain spec: \(spec.directory)")
+print("  Initial reward: \(spec.initialReward) tokens")
+print("  Halving interval: \(spec.halvingInterval) blocks")
+print("  Target block time: \(spec.targetBlockTime)ms")
+print("  Max transactions/block: \(spec.maxNumberOfTransactionsPerBlock)")
+print()
+
+let fetcher = NoopFetcher()
+
+Task {
+    let genesis = try await BlockBuilder.buildGenesis(
+        spec: spec,
+        timestamp: Int64(Date().timeIntervalSince1970 * 1000),
+        difficulty: UInt256(1000),
+        fetcher: fetcher
+    )
+    let genesisHeader = HeaderImpl<Block>(node: genesis)
+    print("Genesis block CID: \(genesisHeader.rawCID)")
+    print("Genesis difficulty hash: \(genesis.getDifficultyHash())")
+    print()
+
+    let chain = ChainState.fromGenesis(block: genesis)
+
+    print("Building a 5-block chain...")
+    var prev = genesis
+    var prevTimestamp = Int64(Date().timeIntervalSince1970 * 1000)
+    for i in 1...5 {
+        prevTimestamp += 1000
+        let block = try await BlockBuilder.buildBlock(
+            previous: prev,
+            timestamp: prevTimestamp,
+            difficulty: UInt256(1000),
+            nonce: UInt64(i),
+            fetcher: fetcher
+        )
+        let header = HeaderImpl<Block>(node: block)
+        let result = await chain.submitBlock(
+            parentBlockHeaderAndIndex: nil,
+            blockHeader: header,
+            block: block
+        )
+        print("  Block \(i): CID=\(String(header.rawCID.prefix(20)))... extends=\(result.extendsMainChain)")
+        prev = block
+    }
+
+    let tip = await chain.getMainChainTip()
+    let highest = await chain.getHighestBlockIndex()
+    print()
+    print("Chain state:")
+    print("  Tip: \(String(tip.prefix(20)))...")
+    print("  Height: \(highest)")
+    print()
+
+    print("Creating a longer fork from genesis (6 blocks)...")
+    var forkPrev = genesis
+    let forkBaseTimestamp = Int64(Date().timeIntervalSince1970 * 1000)
+    for i in 1...6 {
+        let block = try await BlockBuilder.buildBlock(
+            previous: forkPrev,
+            timestamp: forkBaseTimestamp + Int64(i) * 1000,
+            difficulty: UInt256(1000),
+            nonce: UInt64(100 + i),
+            fetcher: fetcher
+        )
+        let header = HeaderImpl<Block>(node: block)
+        let result = await chain.submitBlock(
+            parentBlockHeaderAndIndex: nil,
+            blockHeader: header,
+            block: block
+        )
+        let reorged = result.reorganization != nil ? " [REORG]" : ""
+        print("  Fork block \(i): extends=\(result.extendsMainChain)\(reorged)")
+        forkPrev = block
+    }
+
+    let newTip = await chain.getMainChainTip()
+    let newHighest = await chain.getHighestBlockIndex()
+    print()
+    print("After fork:")
+    print("  Tip: \(String(newTip.prefix(20)))...")
+    print("  Height: \(newHighest)")
+    print("  Tip changed: \(tip != newTip)")
+    print()
+    print("Demo complete.")
+
+    exit(0)
+}
+
+RunLoop.main.run()

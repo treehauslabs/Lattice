@@ -22,9 +22,9 @@ public struct TransactionBody: Scalar {
         return true
     }
     
-    func genesisActionsAreValid(fetcher: Fetcher) async throws -> Bool {
+    func genesisActionsAreValid(fetcher: Fetcher, parentSpec: ChainSpec? = nil) async throws -> Bool {
         return try await !genesisActions.concurrentMap { genesisAction in
-            try await genesisAction.block.validateGenesis(fetcher: fetcher, directory: genesisAction.directory)
+            try await genesisAction.block.validateGenesis(fetcher: fetcher, directory: genesisAction.directory, parentSpec: parentSpec)
         }.contains(false)
     }
     

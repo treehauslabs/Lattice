@@ -10,11 +10,11 @@ public extension AccountStateHeader {
             if proofs[[action.owner]] != nil { throw StateErrors.conflictingActions }
             if action.newBalance == 0 {
                 proofs[[action.owner]] = .deletion
-            }
-            if action.oldBalance == 0 {
+            } else if action.oldBalance == 0 {
                 proofs[[action.owner]] = .insertion
+            } else {
+                proofs[[action.owner]] = .mutation
             }
-            proofs[[action.owner]] = .mutation
         }
         return try await proof(paths: proofs, fetcher: fetcher)
     }
@@ -32,7 +32,7 @@ public extension AccountStateHeader {
             }
             transforms[[action.owner]] = .update(String(action.newBalance))
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     

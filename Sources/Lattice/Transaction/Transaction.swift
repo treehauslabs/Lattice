@@ -59,7 +59,7 @@ public struct Transaction {
 }
 
 extension Transaction: Node {
-    public func get(property: PathSegment) -> (any cashew.Address)? {
+    public func get(property: PathSegment) -> (any cashew.Header)? {
         if property == TRANSACTION_BODY_PROPERTY { return body }
         return nil
     }
@@ -68,7 +68,7 @@ extension Transaction: Node {
         return TRANSACTION_PROPERTIES
     }
     
-    public func set(properties: [PathSegment : any cashew.Address]) -> Transaction {
+    public func set(properties: [PathSegment : any cashew.Header]) -> Transaction {
         return Self(signatures: signatures, body: properties[TRANSACTION_BODY_PROPERTY] as! HeaderImpl<TransactionBody>)
     }
 }

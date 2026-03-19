@@ -19,7 +19,11 @@ public struct PeerValue: Scalar {
     }
     
     public var description: String {
-        return String(data: try! JSONEncoder().encode(self), encoding: .utf8)!
+        guard let data = try? JSONEncoder().encode(self),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
     }
 }
 
@@ -49,7 +53,7 @@ public extension PeerStateHeader {
             case .update: transforms[[action.owner]] = .update(PeerValue(peerAction: action).description)
             }
         }
-        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed }
+        guard let transformResult = try transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
     }
     
