@@ -542,7 +542,6 @@ Block difficulty comparison uses `UInt256` -- the SHA-256 hash of a block's cano
 ### Phase 5: Advanced Features
 
 - [ ] Alternative consensus mechanisms per chain (PoS, PoA via ChainSpec extension)
-- [ ] Smart contract execution layer (WASM or custom VM per chain)
 - [ ] Atomic cross-chain swaps (multi-step deposit/receipt/withdrawal in a single logical operation)
 - [ ] Chain governance: on-chain voting for ChainSpec parameter changes
 - [ ] Fee market with EIP-1559-style base fee adjustment
