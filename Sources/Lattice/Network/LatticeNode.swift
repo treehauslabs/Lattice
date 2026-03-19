@@ -147,11 +147,16 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
 
         let nexus = await lattice.nexus
         let chainState = await nexus.chain
+        let identity = MinerIdentity(
+            publicKeyHex: config.publicKey,
+            privateKeyHex: config.privateKey
+        )
         let miner = MinerLoop(
             chainState: chainState,
             mempool: network.mempool,
             fetcher: network.fetcher,
-            spec: genesisConfig.spec
+            spec: genesisConfig.spec,
+            identity: identity
         )
         await miner.setDelegate(self)
         miners[directory] = miner
@@ -252,6 +257,70 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
 
     public func network(for directory: String) -> ChainNetwork? {
         networks[directory]
+    }
+
+    public func allDirectories() -> [String] {
+        Array(networks.keys.sorted())
+    }
+
+    public func isMining(directory: String) -> Bool {
+        miners[directory] != nil
+    }
+
+    public struct ChainInfo: Sendable {
+        public let directory: String
+        public let height: UInt64
+        public let tip: String
+        public let mining: Bool
+        public let mempoolCount: Int
+    }
+
+    public func chainStatus() async -> [ChainInfo] {
+        var result: [ChainInfo] = []
+        let nexusDir = genesisConfig.spec.directory
+        let nexusHeight = await lattice.nexus.chain.getHighestBlockIndex()
+        let nexusTip = await lattice.nexus.chain.getMainChainTip()
+        let nexusMempoolCount = await networks[nexusDir]?.mempool.count ?? 0
+        result.append(ChainInfo(
+            directory: nexusDir, height: nexusHeight, tip: nexusTip,
+            mining: miners[nexusDir] != nil, mempoolCount: nexusMempoolCount
+        ))
+        let childDirs = await lattice.nexus.childDirectories()
+        for dir in childDirs.sorted() {
+            if let childLevel = await lattice.nexus.children[dir] {
+                let h = await childLevel.chain.getHighestBlockIndex()
+                let t = await childLevel.chain.getMainChainTip()
+                let mc = await networks[dir]?.mempool.count ?? 0
+                result.append(ChainInfo(
+                    directory: dir, height: h, tip: t,
+                    mining: miners[dir] != nil, mempoolCount: mc
+                ))
+            }
+        }
+        return result
+    }
+
+    public func restoreChildChains() async throws {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(
+            at: config.storagePath,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) else { return }
+        let nexusDir = genesisConfig.spec.directory
+        for dir in contents {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            let dirName = dir.lastPathComponent
+            guard dirName != nexusDir else { continue }
+            let stateFile = dir.appendingPathComponent("chain_state.json")
+            guard fm.fileExists(atPath: stateFile.path) else { continue }
+            let persister = ChainStatePersister(storagePath: config.storagePath, directory: dirName)
+            guard let persisted = try? await persister.load() else { continue }
+            let childChain = ChainState.restore(from: persisted)
+            let childLevel = ChainLevel(chain: childChain, children: [:])
+            await lattice.nexus.restoreChildChain(directory: dirName, level: childLevel)
+            persisters[dirName] = persister
+        }
     }
 
     public func registerChainNetwork(

@@ -2,7 +2,7 @@ import cashew
 import UInt256
 
 public actor Lattice {
-    let nexus: ChainLevel
+    public let nexus: ChainLevel
 
     public init(nexus: ChainLevel) {
         self.nexus = nexus
@@ -68,6 +68,15 @@ public actor ChainLevel {
         let childChain = ChainState.fromGenesis(block: genesisBlock)
         let childLevel = ChainLevel(chain: childChain, children: [:])
         children[directory] = childLevel
+    }
+
+    public func restoreChildChain(directory: String, level: ChainLevel) {
+        guard children[directory] == nil else { return }
+        children[directory] = level
+    }
+
+    public func childDirectories() -> [String] {
+        Array(children.keys)
     }
 
     // MARK: - Child Block Extraction (Merged Mining)

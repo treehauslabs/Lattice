@@ -13,7 +13,10 @@ let package = Package(
             targets: ["Lattice"]),
         .executable(
             name: "LatticeDemo",
-            targets: ["LatticeDemo"])
+            targets: ["LatticeDemo"]),
+        .executable(
+            name: "LatticeNode",
+            targets: ["LatticeNode"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
@@ -42,6 +45,9 @@ let package = Package(
             ]),
         .executableTarget(
             name: "LatticeDemo",
+            dependencies: ["Lattice"]),
+        .executableTarget(
+            name: "LatticeNode",
             dependencies: ["Lattice"]),
         .testTarget(
             name: "LatticeTests",
