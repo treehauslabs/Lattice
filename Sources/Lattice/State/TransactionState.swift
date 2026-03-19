@@ -1,6 +1,6 @@
 import cashew
 
-public typealias TransactionState = MerkleDictionaryImpl<UInt64>
+public typealias TransactionState = MerkleDictionaryImpl<String>
 public typealias TransactionStateHeader = HeaderImpl<TransactionState>
 
 public extension TransactionStateHeader {
