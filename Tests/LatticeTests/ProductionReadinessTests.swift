@@ -1,0 +1,439 @@
+import XCTest
+@testable import Lattice
+import UInt256
+import cashew
+import Foundation
+import Acorn
+
+private struct LocalFetcher: Fetcher {
+    func fetch(rawCid: String) async throws -> Data {
+        throw NSError(domain: "LocalFetcher", code: 1)
+    }
+}
+private let fetcher = LocalFetcher()
+
+// MARK: - Genesis Ceremony Tests
+
+@MainActor
+final class GenesisCeremonyTests: XCTestCase {
+
+    func testCreateDeterministicGenesis() async throws {
+        let config = GenesisConfig.standard(spec: ChainSpec(
+            directory: "TestNexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        ))
+
+        let result1 = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+        let result2 = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+
+        XCTAssertEqual(result1.blockHash, result2.blockHash,
+            "Same genesis config must produce identical genesis block")
+
+        let tip1 = await result1.chainState.getMainChainTip()
+        let tip2 = await result2.chainState.getMainChainTip()
+        XCTAssertEqual(tip1, tip2)
+    }
+
+    func testVerifyValidGenesis() async throws {
+        let config = GenesisConfig(
+            spec: ChainSpec(
+                directory: "Test",
+                maxNumberOfTransactionsPerBlock: 100,
+                maxStateGrowth: 100_000,
+                premine: 0,
+                targetBlockTime: 1_000,
+                initialRewardExponent: 10
+            ),
+            timestamp: 42,
+            difficulty: UInt256(1000)
+        )
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+        XCTAssertTrue(GenesisCeremony.verify(block: result.block, config: config))
+    }
+
+    func testVerifyRejectsWrongTimestamp() async throws {
+        let config = GenesisConfig(
+            spec: ChainSpec(
+                directory: "Test",
+                maxNumberOfTransactionsPerBlock: 100,
+                maxStateGrowth: 100_000,
+                premine: 0,
+                targetBlockTime: 1_000,
+                initialRewardExponent: 10
+            ),
+            timestamp: 42,
+            difficulty: UInt256(1000)
+        )
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+
+        let wrongConfig = GenesisConfig(
+            spec: config.spec, timestamp: 999, difficulty: config.difficulty
+        )
+        XCTAssertFalse(GenesisCeremony.verify(block: result.block, config: wrongConfig))
+    }
+
+    func testGenesisChainStateIsUsable() async throws {
+        let config = GenesisConfig.standard(spec: ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        ))
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+
+        let height = await result.chainState.getHighestBlockIndex()
+        XCTAssertEqual(height, 0)
+
+        let contains = await result.chainState.contains(blockHash: result.blockHash)
+        XCTAssertTrue(contains)
+
+        let onMain = await result.chainState.isOnMainChain(hash: result.blockHash)
+        XCTAssertTrue(onMain)
+
+        let block1 = try await BlockBuilder.buildBlock(
+            previous: result.block, timestamp: 1_000, difficulty: UInt256.max,
+            nonce: 1, fetcher: fetcher
+        )
+        let submitResult = await result.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil,
+            blockHeader: HeaderImpl<Block>(node: block1),
+            block: block1
+        )
+        XCTAssertTrue(submitResult.extendsMainChain, "Should be able to extend genesis chain")
+    }
+}
+
+// MARK: - Miner Loop Tests
+
+@MainActor
+final class MinerLoopTests: XCTestCase {
+
+    func testMinerStartStop() async throws {
+        let config = GenesisConfig.standard(spec: ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        ))
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+        let mempool = Mempool()
+
+        let worker = InMemoryTestWorker()
+        if let blockData = result.block.toData() {
+            await worker.storeLocal(cid: ContentIdentifier(rawValue: result.blockHash), data: blockData)
+        }
+        let acornFetcher = AcornFetcher(worker: worker)
+
+        let miner = MinerLoop(
+            chainState: result.chainState,
+            mempool: mempool,
+            fetcher: acornFetcher,
+            spec: config.spec
+        )
+
+        let isMiningBefore = await miner.isMining
+        XCTAssertFalse(isMiningBefore)
+
+        await miner.start()
+        let isMiningAfter = await miner.isMining
+        XCTAssertTrue(isMiningAfter)
+
+        await miner.stop()
+        let isMiningFinal = await miner.isMining
+        XCTAssertFalse(isMiningFinal)
+    }
+}
+
+actor InMemoryTestWorker: AcornCASWorker {
+    var near: (any AcornCASWorker)?
+    var far: (any AcornCASWorker)?
+    var timeout: Duration? { nil }
+    private var store: [ContentIdentifier: Data] = [:]
+
+    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
+    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
+    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
+}
+
+// MARK: - Block Validation on Receipt Tests
+
+@MainActor
+final class BlockReceptionTests: XCTestCase {
+
+    func testReceivedBlockDataIsStoredAndResolvable() async throws {
+        let config = GenesisConfig.standard(spec: ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        ))
+
+        let worker = InMemoryTestWorker()
+        let acornFetcher = AcornFetcher(worker: worker)
+
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+        if let data = result.block.toData() {
+            await acornFetcher.store(rawCid: result.blockHash, data: data)
+        }
+
+        let block1 = try await BlockBuilder.buildBlock(
+            previous: result.block, timestamp: 1_000,
+            difficulty: UInt256.max, nonce: 1, fetcher: fetcher
+        )
+        let block1Hash = HeaderImpl<Block>(node: block1).rawCID
+        guard let block1Data = block1.toData() else {
+            XCTFail("Block serialization failed")
+            return
+        }
+
+        await acornFetcher.store(rawCid: block1Hash, data: block1Data)
+
+        let fetchedData = try await acornFetcher.fetch(rawCid: block1Hash)
+        XCTAssertEqual(fetchedData, block1Data)
+
+        let resolvedBlock = Block(data: fetchedData)
+        XCTAssertNotNil(resolvedBlock, "Block must deserialize from stored data")
+    }
+
+    func testSubmitBlockAfterStoringData() async throws {
+        let config = GenesisConfig.standard(spec: ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        ))
+        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
+
+        let block1 = try await BlockBuilder.buildBlock(
+            previous: result.block, timestamp: 1_000,
+            difficulty: UInt256.max, nonce: 1, fetcher: fetcher
+        )
+        let header = HeaderImpl<Block>(node: block1)
+        let submitResult = await result.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil,
+            blockHeader: header,
+            block: block1
+        )
+        XCTAssertTrue(submitResult.extendsMainChain)
+
+        let tip = await result.chainState.getMainChainTip()
+        XCTAssertEqual(tip, header.rawCID)
+    }
+}
+
+// MARK: - Transaction Relay Tests
+
+@MainActor
+final class TransactionRelayTests: XCTestCase {
+
+    func testTransactionAddedToMempool() async {
+        let mempool = Mempool(maxSize: 100)
+        let kp = CryptoUtils.generateKeyPair()
+        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [], signers: [signerCID], fee: 50, nonce: 1
+        )
+        let bodyHeader = HeaderImpl<TransactionBody>(node: body)
+        let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
+        let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
+
+        let added = await mempool.add(transaction: tx)
+        XCTAssertTrue(added)
+
+        let count = await mempool.count
+        XCTAssertEqual(count, 1)
+
+        let selected = await mempool.selectTransactions(maxCount: 10)
+        XCTAssertEqual(selected.count, 1)
+        XCTAssertEqual(selected[0].body.rawCID, bodyHeader.rawCID)
+    }
+
+    func testTransactionPrunedAfterBlockConfirmation() async {
+        let mempool = Mempool(maxSize: 100)
+        let kp = CryptoUtils.generateKeyPair()
+        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
+
+        var txCIDs: [String] = []
+        for i: UInt64 in 0..<5 {
+            let body = TransactionBody(
+                accountActions: [], actions: [], depositActions: [],
+                genesisActions: [], peerActions: [], receiptActions: [],
+                withdrawalActions: [], signers: [signerCID], fee: 10, nonce: i
+            )
+            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
+            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
+            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
+            let _ = await mempool.add(transaction: tx)
+            txCIDs.append(bodyHeader.rawCID)
+        }
+
+        let countBefore = await mempool.count
+        XCTAssertEqual(countBefore, 5)
+
+        let confirmed = Set([txCIDs[0], txCIDs[2], txCIDs[4]])
+        await mempool.removeAll(txCIDs: confirmed)
+
+        let countAfter = await mempool.count
+        XCTAssertEqual(countAfter, 2)
+
+        for cid in confirmed {
+            let contains = await mempool.contains(txCID: cid)
+            XCTAssertFalse(contains)
+        }
+    }
+}
+
+// MARK: - End-to-End: Genesis -> Mine -> Submit -> Verify
+
+@MainActor
+final class GenesisToBlockE2ETests: XCTestCase {
+
+    func testFullCycle() async throws {
+        let spec = ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        )
+        let genesisConfig = GenesisConfig.standard(spec: spec)
+        let genesis = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
+
+        XCTAssertTrue(GenesisCeremony.verify(block: genesis.block, config: genesisConfig))
+
+        var prev = genesis.block
+        for i in 1...10 {
+            let template = try await BlockBuilder.buildBlock(
+                previous: prev, timestamp: Int64(i) * 1000,
+                difficulty: UInt256.max, nonce: 0, fetcher: fetcher
+            )
+            let mined = BlockBuilder.mine(block: template, targetDifficulty: UInt256.max, maxAttempts: 10)!
+
+            let header = HeaderImpl<Block>(node: mined)
+            let result = await genesis.chainState.submitBlock(
+                parentBlockHeaderAndIndex: nil,
+                blockHeader: header,
+                block: mined
+            )
+            XCTAssertTrue(result.extendsMainChain, "Block \(i) should extend")
+            prev = mined
+        }
+
+        let height = await genesis.chainState.getHighestBlockIndex()
+        XCTAssertEqual(height, 10)
+
+        let tipHash = await genesis.chainState.getMainChainTip()
+        XCTAssertEqual(tipHash, HeaderImpl<Block>(node: prev).rawCID)
+
+        let genesisOnMain = await genesis.chainState.isOnMainChain(hash: genesis.blockHash)
+        XCTAssertTrue(genesisOnMain)
+    }
+
+    func testTwoNodesSameGenesis() async throws {
+        let spec = ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        )
+        let genesisConfig = GenesisConfig.standard(spec: spec)
+
+        let nodeA = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
+        let nodeB = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
+
+        XCTAssertEqual(nodeA.blockHash, nodeB.blockHash, "Both nodes must agree on genesis")
+
+        let blockA1 = try await BlockBuilder.buildBlock(
+            previous: nodeA.block, timestamp: 1_000,
+            difficulty: UInt256.max, nonce: 1, fetcher: fetcher
+        )
+        let headerA1 = HeaderImpl<Block>(node: blockA1)
+
+        let resultOnA = await nodeA.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: headerA1, block: blockA1
+        )
+        XCTAssertTrue(resultOnA.extendsMainChain)
+
+        let resultOnB = await nodeB.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: headerA1, block: blockA1
+        )
+        XCTAssertTrue(resultOnB.extendsMainChain, "Node B accepts block mined by Node A")
+
+        let tipA = await nodeA.chainState.getMainChainTip()
+        let tipB = await nodeB.chainState.getMainChainTip()
+        XCTAssertEqual(tipA, tipB, "Both nodes must agree on chain tip")
+    }
+
+    func testTwoNodesReachConsensusAfterFork() async throws {
+        let spec = ChainSpec(
+            directory: "Nexus",
+            maxNumberOfTransactionsPerBlock: 100,
+            maxStateGrowth: 100_000,
+            premine: 0,
+            targetBlockTime: 1_000,
+            initialRewardExponent: 10
+        )
+        let genesisConfig = GenesisConfig.standard(spec: spec)
+        let nodeA = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
+        let nodeB = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
+
+        let blockA1 = try await BlockBuilder.buildBlock(
+            previous: nodeA.block, timestamp: 1_000,
+            difficulty: UInt256.max, nonce: 1, fetcher: fetcher
+        )
+        let blockA2 = try await BlockBuilder.buildBlock(
+            previous: blockA1, timestamp: 2_000,
+            difficulty: UInt256.max, nonce: 2, fetcher: fetcher
+        )
+
+        let blockB1 = try await BlockBuilder.buildBlock(
+            previous: nodeB.block, timestamp: 1_000,
+            difficulty: UInt256.max, nonce: 100, fetcher: fetcher
+        )
+
+        let _ = await nodeA.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA1), block: blockA1
+        )
+        let _ = await nodeA.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA2), block: blockA2
+        )
+
+        let _ = await nodeB.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockB1), block: blockB1
+        )
+
+        let tipB_before = await nodeB.chainState.getMainChainTip()
+        XCTAssertEqual(tipB_before, HeaderImpl<Block>(node: blockB1).rawCID)
+
+        let _ = await nodeB.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA1), block: blockA1
+        )
+        let resultA2onB = await nodeB.chainState.submitBlock(
+            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA2), block: blockA2
+        )
+
+        XCTAssertNotNil(resultA2onB.reorganization, "Node B should reorg to longer chain from A")
+
+        let tipA = await nodeA.chainState.getMainChainTip()
+        let tipB = await nodeB.chainState.getMainChainTip()
+        XCTAssertEqual(tipA, tipB, "Both nodes must converge on same tip after reorg")
+    }
+}
