@@ -1,5 +1,5 @@
 {
-  "originHash" : "967474829d3fe32be232a6bce8b4c436069a6079cb714ef0d0275f1d85a9fb6b",
+  "originHash" : "cd3107c41ac93762e77f6e5e23cb973d3e9193771b646273c3d964b628be3583",
   "pins" : [
     {
       "identity" : "acorn",
@@ -202,10 +202,10 @@
     {
       "identity" : "uint256",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/hyugit/UInt256.git",
+      "location" : "https://github.com/treehauslabs/UInt256.git",
       "state" : {
-        "branch" : "master",
-        "revision" : "a5cd5756244550da79721986ef303cfad3987c75"
+        "revision" : "beb054dea3e0d18b21cad07619907a9dad093d8e",
+        "version" : "1.0.0"
       }
     }
   ],

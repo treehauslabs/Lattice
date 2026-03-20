@@ -17,7 +17,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "1.0.0" ..< "4.0.0"),
         .package(url: "https://github.com/treehauslabs/cashew.git", branch: "master"),
-        .package(url: "https://github.com/hyugit/UInt256.git", branch: "master"),
+        .package(url: "https://github.com/treehauslabs/UInt256.git", from: "1.0.0"),
         .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1"),
         .package(url: "https://github.com/JohnSundell/CollectionConcurrencyKit.git", from: "0.2.0"),
         .package(url: "https://github.com/treehauslabs/Acorn.git", from: "1.0.0"),
