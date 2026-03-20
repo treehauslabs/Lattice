@@ -34,7 +34,7 @@ public struct LatticeNodeConfig: Sendable {
     }
 }
 
-public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
+public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
     public let config: LatticeNodeConfig
     public let lattice: Lattice
     public let genesisConfig: GenesisConfig
@@ -91,7 +91,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
 
         self.genesisResult = genesis
         let nexusLevel = ChainLevel(chain: genesis.chainState, children: [:])
-        self.lattice = Lattice(nexus: nexusLevel)
+        let latticeInstance = Lattice(nexus: nexusLevel)
+        self.lattice = latticeInstance
         self.networks = [genesisConfig.spec.directory: nexusNetwork]
         self.miners = [:]
         self.persisters = [genesisConfig.spec.directory: persister]
@@ -102,6 +103,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
     // MARK: - Lifecycle
 
     public func start() async throws {
+        await lattice.setDelegate(self)
         for (_, network) in networks {
             await network.setDelegate(self)
             try await network.start()
@@ -251,6 +253,23 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate {
             let cutoff = ContinuousClock.Instant.now - .seconds(60)
             recentPeerBlocks = recentPeerBlocks.filter { $0.value > cutoff }
         }
+    }
+
+    // MARK: - LatticeDelegate (Child Chain Discovery)
+
+    nonisolated public func lattice(_ lattice: Lattice, didDiscoverChildChain directory: String) async {
+        await handleChildChainDiscovery(directory: directory)
+    }
+
+    private func handleChildChainDiscovery(directory: String) async {
+        guard networks[directory] == nil else { return }
+        let ivyConfig = IvyConfig(
+            publicKey: config.publicKey,
+            listenPort: config.listenPort,
+            bootstrapPeers: config.bootstrapPeers,
+            enableLocalDiscovery: config.enableLocalDiscovery
+        )
+        try? await registerChainNetwork(directory: directory, config: ivyConfig)
     }
 
     // MARK: - Chain Network Management

@@ -1,11 +1,20 @@
 import cashew
 import UInt256
 
+public protocol LatticeDelegate: AnyObject, Sendable {
+    func lattice(_ lattice: Lattice, didDiscoverChildChain directory: String) async
+}
+
 public actor Lattice {
     public let nexus: ChainLevel
+    public weak var delegate: LatticeDelegate?
 
     public init(nexus: ChainLevel) {
         self.nexus = nexus
+    }
+
+    public func setDelegate(_ delegate: LatticeDelegate) {
+        self.delegate = delegate
     }
 
     public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
@@ -24,14 +33,14 @@ public actor Lattice {
                 await nexus.propagateReorgToChildren(reorg: reorg)
             }
             if result.extendsMainChain || result.reorganization != nil {
-                // Parent block is accepted. Child blocks are processed
-                // independently -- invalid child blocks are skipped without
-                // affecting the parent block's validity or other children.
-                await nexus.extractAndProcessChildBlocks(
+                let newChildren = await nexus.extractAndProcessChildBlocks(
                     parentBlock: resolvedBlock,
                     parentBlockHeader: blockHeader,
                     fetcher: fetcher
                 )
+                for dir in newChildren {
+                    await delegate?.lattice(self, didDiscoverChildChain: dir)
+                }
                 return true
             }
             return await nexus.processNonChainBlockForChildren(
@@ -92,15 +101,16 @@ public actor ChainLevel {
     // chain issues from bottlenecking the nexus and ensures a single
     // malformed child block can't poison the entire merged-mined set.
 
+    @discardableResult
     func extractAndProcessChildBlocks(
         parentBlock: Block,
         parentBlockHeader: BlockHeader,
         fetcher: Fetcher,
         ancestorSpecs: [ChainSpec] = []
-    ) async {
-        guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return }
-        guard let allChildEntries = try? childBlocksNode.allKeysAndValues() else { return }
-        if allChildEntries.isEmpty { return }
+    ) async -> [String] {
+        guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return [] }
+        guard let allChildEntries = try? childBlocksNode.allKeysAndValues() else { return [] }
+        if allChildEntries.isEmpty { return [] }
 
         let parentBlockIndex = await chain.getHighestBlockIndex()
 
@@ -109,11 +119,13 @@ public actor ChainLevel {
             allAncestorSpecs.append(parentSpec)
         }
 
+        var newChildDirectories: [String] = []
         for (directory, childBlockHeader) in allChildEntries {
             if children[directory] == nil {
                 if let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node,
                    childBlock.index == 0, childBlock.previousBlock == nil {
                     registerChildChain(directory: directory, genesisBlock: childBlock)
+                    newChildDirectories.append(directory)
                 }
             }
         }
@@ -151,6 +163,7 @@ public actor ChainLevel {
                 }
             }
         }
+        return newChildDirectories
     }
 
     // MARK: - Child Block Validation
