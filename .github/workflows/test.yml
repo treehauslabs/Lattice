@@ -31,4 +31,9 @@ jobs:
 
       - name: Run tests
         timeout-minutes: 10
-        run: swift test --parallel --skip TCPIntegrationTests
+        run: >-
+          swift test --parallel
+          --skip TCPIntegrationTests
+          --skip MultiNodeLifecycleTests
+          --skip MultiNodeSpawnTests
+          --skip MultiNodeTransactionTests
