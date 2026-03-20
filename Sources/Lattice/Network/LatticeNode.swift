@@ -5,6 +5,7 @@ import AcornDiskWorker
 import Tally
 import cashew
 import UInt256
+import ArrayTrie
 
 public struct LatticeNodeConfig: Sendable {
     public let publicKey: String
@@ -14,7 +15,7 @@ public struct LatticeNodeConfig: Sendable {
     public let storagePath: URL
     public let enableLocalDiscovery: Bool
     public let persistInterval: UInt64
-    public let subscribedChains: Set<String>
+    public let subscribedChains: ArrayTrie<Bool>
     public let syncStrategy: SyncStrategy
     public let retentionDepth: UInt64
 
@@ -26,7 +27,11 @@ public struct LatticeNodeConfig: Sendable {
         storagePath: URL,
         enableLocalDiscovery: Bool = true,
         persistInterval: UInt64 = 100,
-        subscribedChains: Set<String> = ["Nexus"],
+        subscribedChains: ArrayTrie<Bool> = {
+            var t = ArrayTrie<Bool>()
+            t.set(["Nexus"], value: true)
+            return t
+        }(),
         syncStrategy: SyncStrategy = .snapshot,
         retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
     ) {
@@ -38,10 +43,14 @@ public struct LatticeNodeConfig: Sendable {
         self.enableLocalDiscovery = enableLocalDiscovery
         self.persistInterval = persistInterval
         var subs = subscribedChains
-        subs.insert("Nexus")
+        subs.set(["Nexus"], value: true)
         self.subscribedChains = subs
         self.syncStrategy = syncStrategy
         self.retentionDepth = retentionDepth
+    }
+
+    public func isSubscribed(chainPath: [String]) -> Bool {
+        subscribedChains.get(chainPath) == true
     }
 }
 
@@ -359,7 +368,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
     }
 
     private func handleChildChainDiscovery(directory: String) async {
-        guard config.subscribedChains.contains(directory) else { return }
+        guard config.isSubscribed(chainPath: [genesisConfig.spec.directory, directory]) else { return }
         guard networks[directory] == nil else { return }
         let ivyConfig = IvyConfig(
             publicKey: config.publicKey,
@@ -448,9 +457,10 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
 
     private func buildChildMiningContexts() async -> [ChildMiningContext] {
         var contexts: [ChildMiningContext] = []
+        let nexusDir = genesisConfig.spec.directory
         let childDirs = await lattice.nexus.childDirectories()
         for dir in childDirs {
-            guard config.subscribedChains.contains(dir) else { continue }
+            guard config.isSubscribed(chainPath: [nexusDir, dir]) else { continue }
             guard let network = networks[dir] else { continue }
             guard let childChainState = await lattice.nexus.children[dir]?.chain else { continue }
             contexts.append(ChildMiningContext(
