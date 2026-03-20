@@ -288,6 +288,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         guard let blockData = block.toData() else { return }
 
         await network.storeBlock(cid: header.rawCID, data: blockData)
+        await network.pinTipBlock(cid: header.rawCID, data: blockData)
         let _ = await lattice.processBlockHeader(header, fetcher: network.fetcher)
         await network.broadcastBlock(cid: header.rawCID, data: blockData)
         await maybePersist(directory: directory)
@@ -311,6 +312,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         await recordBlockTime(key: key, time: now)
 
         await network.storeBlock(cid: cid, data: data)
+        await network.pinTipBlock(cid: cid, data: data)
 
         if let block = Block(data: data) {
             if await checkSyncNeeded(

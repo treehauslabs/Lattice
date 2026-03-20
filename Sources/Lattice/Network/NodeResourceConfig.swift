@@ -55,13 +55,6 @@ public struct NodeResourceConfig: Sendable {
         return max(totalTxs / max(chainCount, 1), 100)
     }
 
-    public func distanceBias(for cid: String) -> Double {
-        guard let nodeHash = nodeIdentityHash else { return 0.0 }
-        let cidHash = Router.hash(cid)
-        let cpl = Router.commonPrefixLength(nodeHash, cidHash)
-        return Double(cpl) / 256.0
-    }
-
     public func withIdentity(publicKey: String) -> NodeResourceConfig {
         NodeResourceConfig(
             memoryBudgetGB: memoryBudgetGB,

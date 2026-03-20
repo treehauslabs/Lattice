@@ -22,6 +22,7 @@ public actor ChainNetwork: IvyDelegate {
     private let resources: NodeResourceConfig
     public weak var delegate: ChainNetworkDelegate?
     private var subscribedChains: Set<String>
+    private var tipBlockData: (cid: String, data: Data)?
 
     public init(
         directory: String,
@@ -35,6 +36,7 @@ public actor ChainNetwork: IvyDelegate {
         self.resources = resources
         self.mempool = Mempool(maxSize: resources.mempoolSizePerChain(chainCount: chainCount))
 
+        // Memory: pure LFU cache (fast CDN, no distance bias)
         let memoryBytes = resources.memoryBytesPerChain(chainCount: chainCount)
         let memoryEntries = max(memoryBytes / 4096, 100)
         let memory = MemoryCASWorker(
@@ -43,11 +45,12 @@ public actor ChainNetwork: IvyDelegate {
         )
         self.memoryWorker = memory
 
+        // Disk: distance-based eviction (evict most distant content first)
         let diskBytes = resources.diskBytesPerChain(chainCount: chainCount)
-        let diskEntries = max(diskBytes / 4096, 1000)
-        let disk = try DiskCASWorker(
+        let nodeHash = resources.nodeIdentityHash ?? Router.hash("default")
+        let disk = try DistanceCASWorker(
             directory: storagePath.appendingPathComponent(directory),
-            capacity: diskEntries,
+            nodeHash: nodeHash,
             maxBytes: diskBytes
         )
 
@@ -73,6 +76,16 @@ public actor ChainNetwork: IvyDelegate {
         await ivy.stop()
     }
 
+    // MARK: - Tip Block Pinning
+
+    public func pinTipBlock(cid: String, data: Data) {
+        tipBlockData = (cid: cid, data: data)
+    }
+
+    public func getTipBlockData() -> (cid: String, data: Data)? {
+        tipBlockData
+    }
+
     // MARK: - Chain Subscription
 
     public func subscribe(to chainDirectory: String) {
@@ -91,32 +104,19 @@ public actor ChainNetwork: IvyDelegate {
         subscribedChains
     }
 
-    // MARK: - Block Operations (Distance-Biased Storage)
+    // MARK: - Block Operations
 
     public func announceBlock(cid: String) async {
         await ivy.announceBlock(cid: cid)
     }
 
     public func broadcastBlock(cid: String, data: Data) async {
-        boostNearbyContent(cid: cid)
         await fetcher.store(rawCid: cid, data: data)
         await ivy.broadcastBlock(cid: cid, data: data)
     }
 
     public func storeBlock(cid: String, data: Data) async {
-        boostNearbyContent(cid: cid)
         await fetcher.store(rawCid: cid, data: data)
-    }
-
-    private func boostNearbyContent(cid: String) {
-        let bias = resources.distanceBias(for: cid)
-        if bias > 0.1 {
-            let boostCount = Int(bias * 5)
-            let acornCid = ContentIdentifier(rawValue: cid)
-            for _ in 0..<boostCount {
-                memoryWorker.syncStore(cid: acornCid, data: Data())
-            }
-        }
     }
 
     // MARK: - Mempool Operations
