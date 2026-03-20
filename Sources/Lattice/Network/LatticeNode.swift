@@ -18,6 +18,7 @@ public struct LatticeNodeConfig: Sendable {
     public let subscribedChains: ArrayTrie<Bool>
     public let syncStrategy: SyncStrategy
     public let retentionDepth: UInt64
+    public let resources: NodeResourceConfig
 
     public init(
         publicKey: String,
@@ -33,7 +34,8 @@ public struct LatticeNodeConfig: Sendable {
             return t
         }(),
         syncStrategy: SyncStrategy = .snapshot,
-        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
+        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE,
+        resources: NodeResourceConfig = .default
     ) {
         self.publicKey = publicKey
         self.privateKey = privateKey
@@ -47,6 +49,7 @@ public struct LatticeNodeConfig: Sendable {
         self.subscribedChains = subs
         self.syncStrategy = syncStrategy
         self.retentionDepth = retentionDepth
+        self.resources = resources
     }
 
     public func isSubscribed(chainPath: [String]) -> Bool {
@@ -80,7 +83,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
                 bootstrapPeers: config.bootstrapPeers,
                 enableLocalDiscovery: config.enableLocalDiscovery
             ),
-            storagePath: config.storagePath
+            storagePath: config.storagePath,
+            resources: config.resources
         )
 
         let persister = ChainStatePersister(
@@ -241,7 +245,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
             fetcher: network.fetcher,
             spec: genesisConfig.spec,
             identity: identity,
-            childContexts: childContexts
+            childContexts: childContexts,
+            batchSize: config.resources.miningBatchSize
         )
         await miner.setDelegate(self)
         miners[directory] = miner
@@ -482,7 +487,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         let network = try await ChainNetwork(
             directory: directory,
             config: config,
-            storagePath: self.config.storagePath
+            storagePath: self.config.storagePath,
+            resources: self.config.resources
         )
         await network.setDelegate(self)
         networks[directory] = network

@@ -1,5 +1,5 @@
 {
-  "originHash" : "ba25b7084aeb3a216f0d265c1b75147ed5efea2754dce2328dcd6ae087dfe1e3",
+  "originHash" : "967474829d3fe32be232a6bce8b4c436069a6079cb714ef0d0275f1d85a9fb6b",
   "pins" : [
     {
       "identity" : "acorn",
@@ -17,6 +17,15 @@
       "state" : {
         "branch" : "master",
         "revision" : "f8509227a354bdd362bd77ef4964719baac66a2f"
+      }
+    },
+    {
+      "identity" : "acornmemoryworker",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/treehauslabs/AcornMemoryWorker.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "783c9e2afb9751d75cecc26fb52b915a82f9b5d3"
       }
     },
     {

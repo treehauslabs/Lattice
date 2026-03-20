@@ -2,6 +2,7 @@ import Foundation
 import Ivy
 import Acorn
 import AcornDiskWorker
+import AcornMemoryWorker
 import Tally
 import cashew
 import UInt256
@@ -24,24 +25,29 @@ public actor ChainNetwork: IvyDelegate {
         directory: String,
         config: IvyConfig,
         storagePath: URL,
-        mempoolSize: Int = 10_000
+        resources: NodeResourceConfig = .default
     ) async throws {
         self.directory = directory
         self.subscribedChains = Set([directory])
-        self.mempool = Mempool(maxSize: mempoolSize)
+        self.mempool = Mempool(maxSize: resources.mempoolMaxSize)
+
+        let memory = MemoryCASWorker(
+            capacity: resources.memoryCacheEntries,
+            maxBytes: resources.memoryCacheMaxBytes
+        )
 
         let disk = try DiskCASWorker(
             directory: storagePath.appendingPathComponent(directory),
-            capacity: 100_000,
-            maxBytes: 1_000_000_000
+            capacity: resources.diskCacheEntries,
+            maxBytes: resources.diskCacheMaxBytes
         )
 
         let ivy = Ivy(config: config)
         let network = await ivy.worker()
 
         let composite = await CompositeCASWorker(
-            workers: ["disk": disk, "net": network],
-            order: ["disk", "net"]
+            workers: ["mem": memory, "disk": disk, "net": network],
+            order: ["mem", "disk", "net"]
         )
 
         self.ivy = ivy

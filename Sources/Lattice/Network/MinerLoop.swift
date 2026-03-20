@@ -41,6 +41,7 @@ public actor MinerLoop {
     private let spec: ChainSpec
     private let identity: MinerIdentity?
     private let childContexts: [ChildMiningContext]
+    private let batchSize: UInt64
     private var mining: Bool
     private var currentTask: Task<Void, Never>?
     public weak var delegate: MinerDelegate?
@@ -51,7 +52,8 @@ public actor MinerLoop {
         fetcher: Fetcher,
         spec: ChainSpec,
         identity: MinerIdentity? = nil,
-        childContexts: [ChildMiningContext] = []
+        childContexts: [ChildMiningContext] = [],
+        batchSize: UInt64 = 10_000
     ) {
         self.chainState = chainState
         self.mempool = mempool
@@ -59,6 +61,7 @@ public actor MinerLoop {
         self.spec = spec
         self.identity = identity
         self.childContexts = childContexts
+        self.batchSize = batchSize
         self.mining = false
     }
 
@@ -112,7 +115,7 @@ public actor MinerLoop {
                     fetcher: fetcher
                 )
 
-                let batchSize: UInt64 = 10_000
+                let batchSize = self.batchSize
                 var nonce: UInt64 = 0
 
                 while mining && !Task.isCancelled {
