@@ -257,6 +257,7 @@ final class BlockReceptionRateLimitTests: XCTestCase {
 final class TCPIntegrationTests: XCTestCase {
 
     func testTwoIvyNodesExchangeBlock() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["CI"] != nil, "TCP tests require local networking")
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         addTeardownBlock { try? group.syncShutdownGracefully() }
 
@@ -299,6 +300,7 @@ final class TCPIntegrationTests: XCTestCase {
     }
 
     func testTwoIvyNodesExchangeMultipleBlocks() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["CI"] != nil, "TCP tests require local networking")
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         addTeardownBlock { try? group.syncShutdownGracefully() }
 
