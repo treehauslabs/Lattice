@@ -4,12 +4,11 @@ import CID
 import Foundation
 
 public struct AccountAction: Codable, Sendable {
-    // raw CID of public key
-    let owner: String
-    let oldBalance: UInt64
-    let newBalance: UInt64
-    
-    init(owner: String, oldBalance: UInt64, newBalance: UInt64) {
+    public let owner: String
+    public let oldBalance: UInt64
+    public let newBalance: UInt64
+
+    public init(owner: String, oldBalance: UInt64, newBalance: UInt64) {
         self.owner = owner
         self.oldBalance = oldBalance
         self.newBalance = newBalance

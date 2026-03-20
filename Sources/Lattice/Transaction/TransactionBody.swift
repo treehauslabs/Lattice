@@ -3,16 +3,16 @@ import CollectionConcurrencyKit
 import JavaScriptCore
 
 public struct TransactionBody: Scalar {
-    let accountActions: [AccountAction]
-    let actions: [Action]
-    let depositActions: [DepositAction]
-    let genesisActions: [GenesisAction]
-    let peerActions: [PeerAction]
-    let receiptActions: [ReceiptAction]
-    let withdrawalActions: [WithdrawalAction]
-    let signers: [String]
-    let fee: UInt64
-    let nonce: UInt64
+    public let accountActions: [AccountAction]
+    public let actions: [Action]
+    public let depositActions: [DepositAction]
+    public let genesisActions: [GenesisAction]
+    public let peerActions: [PeerAction]
+    public let receiptActions: [ReceiptAction]
+    public let withdrawalActions: [WithdrawalAction]
+    public let signers: [String]
+    public let fee: UInt64
+    public let nonce: UInt64
     
     func withdrawalsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
         for withdrawal in withdrawalActions {

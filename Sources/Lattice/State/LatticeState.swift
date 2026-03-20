@@ -22,14 +22,14 @@ let LATTICE_STATE_PROPERTIES: Set<String> = Set([
 ])
 
 public struct LatticeState: Node {
-    let accountState: AccountStateHeader
-    let generalState: GeneralStateHeader
-    let depositState: DepositStateHeader
-    let peerState: PeerStateHeader
-    let genesisState: GenesisStateHeader
-    let receiptState: ReceiptStateHeader
-    let withdrawalState: WithdrawalStateHeader
-    let transactionState: TransactionStateHeader
+    public let accountState: AccountStateHeader
+    public let generalState: GeneralStateHeader
+    public let depositState: DepositStateHeader
+    public let peerState: PeerStateHeader
+    public let genesisState: GenesisStateHeader
+    public let receiptState: ReceiptStateHeader
+    public let withdrawalState: WithdrawalStateHeader
+    public let transactionState: TransactionStateHeader
     
     static func emptyState() -> Self {
         return Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), depositState: DepositStateHeader(node: DepositState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), receiptState: ReceiptStateHeader(node: ReceiptState()), withdrawalState: WithdrawalStateHeader(node: WithdrawalState()), transactionState: TransactionStateHeader(node: TransactionState()))

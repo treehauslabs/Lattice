@@ -2,15 +2,13 @@ import cashew
 import Foundation
 
 public struct ReceiptAction: Codable, Sendable {
-    let withdrawer: String
-    let nonce: UInt128
-    // cryptographic hash of demander public key
-    let demander: String
-    // Total amount to send
-    let amountDemanded: UInt64
-    let directory: String
-    
-    init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, directory: String) {
+    public let withdrawer: String
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let directory: String
+
+    public init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, directory: String) {
         self.withdrawer = withdrawer
         self.nonce = nonce
         self.demander = demander

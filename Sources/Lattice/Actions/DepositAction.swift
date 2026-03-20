@@ -3,16 +3,12 @@ import cashew
 import Foundation
 
 public struct DepositAction: Codable, Sendable {
-    // "id" of demand
-    let nonce: UInt128
-    // CID of recipient public key
-    let demander: String
-    // Total amount to send
-    let amountDemanded: UInt64
-    // Total amount deposited
-    let amountDeposited: UInt64
-    
-    init(nonce: UInt128, demander: String, amountDemanded: UInt64, amountDeposited: UInt64) {
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let amountDeposited: UInt64
+
+    public init(nonce: UInt128, demander: String, amountDemanded: UInt64, amountDeposited: UInt64) {
         self.nonce = nonce
         self.demander = demander
         self.amountDemanded = amountDemanded

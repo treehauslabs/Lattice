@@ -3,9 +3,9 @@ import Foundation
 import JavaScriptCore
 
 public struct Action: Codable, Sendable {
-    let key: String
-    let oldValue: String?
-    let newValue: String?
+    public let key: String
+    public let oldValue: String?
+    public let newValue: String?
     
     // WARNING: Should always run verify before this
     public func stateDelta() throws -> Int {

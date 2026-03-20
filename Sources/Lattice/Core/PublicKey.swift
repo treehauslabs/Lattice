@@ -2,8 +2,7 @@ import cashew
 import Foundation
 
 public struct PublicKey: Scalar {
-    // Public Key Hex
-    let key: String
+    public let key: String
 }
 
 public extension PublicKey {

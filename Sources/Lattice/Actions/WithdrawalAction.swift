@@ -4,14 +4,13 @@ import Foundation
 public let WITHDRAWAL_PROPERTIES = Set(["withdrawer", "demander"])
 
 public struct WithdrawalAction: Codable, Sendable {
-    let withdrawer: String
-    let nonce: UInt128
-    // cryptographic hash of demander public key
-    let demander: String
-    let amountDemanded: UInt64
-    let amountWithdrawn: UInt64
-    
-    init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, amountWithdrawn: UInt64) {
+    public let withdrawer: String
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let amountWithdrawn: UInt64
+
+    public init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, amountWithdrawn: UInt64) {
         self.withdrawer = withdrawer
         self.nonce = nonce
         self.demander = demander

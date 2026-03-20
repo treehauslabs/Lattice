@@ -1,11 +1,9 @@
 import cashew
 
 public struct DepositKey: LosslessStringConvertible {
-    let nonce: UInt128
-    // cryptographic hash of recipient public key
-    let demander: String
-    // Total amount to send
-    let amountDemanded: UInt64
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
     
     public init(depositAction: DepositAction) {
         nonce = depositAction.nonce

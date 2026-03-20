@@ -2,11 +2,11 @@ import cashew
 import Foundation
 
 public struct PeerAction: Codable, Sendable {
-    let owner: String
-    let IpAddress: String
-    let refreshed: Int64
-    let fullNode: Bool
-    let type: PeerActionType
+    public let owner: String
+    public let IpAddress: String
+    public let refreshed: Int64
+    public let fullNode: Bool
+    public let type: PeerActionType
     
     func stateDelta() throws -> Int {
         guard let ownerKeyCount = owner.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }

@@ -39,7 +39,10 @@ public extension ChainState {
         )
     }
 
-    static func restore(from persisted: PersistedChainState) -> ChainState {
+    static func restore(
+        from persisted: PersistedChainState,
+        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
+    ) -> ChainState {
         var hashToBlock: [String: BlockMeta] = [:]
         var indexToBlockHash: [UInt64: Set<String>] = [:]
         for block in persisted.blocks {
@@ -60,7 +63,8 @@ public extension ChainState {
             mainChainHashes: Set(persisted.mainChainHashes),
             indexToBlockHash: indexToBlockHash,
             hashToBlock: hashToBlock,
-            parentChainBlockHashToBlockHash: persisted.parentChainMap
+            parentChainBlockHashToBlockHash: persisted.parentChainMap,
+            retentionDepth: retentionDepth
         )
         return chain
     }

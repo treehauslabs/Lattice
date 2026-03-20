@@ -1,10 +1,10 @@
 import cashew
 
 public struct WithdrawalValue: Scalar {
-    let withdrawer: String
-    let amountWithdrawn: UInt64
-    
-    init(withdrawer: String, amountWithdrawn: UInt64) {
+    public let withdrawer: String
+    public let amountWithdrawn: UInt64
+
+    public init(withdrawer: String, amountWithdrawn: UInt64) {
         self.withdrawer = withdrawer
         self.amountWithdrawn = amountWithdrawn
     }

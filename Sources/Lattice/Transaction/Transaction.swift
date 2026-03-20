@@ -4,9 +4,8 @@ let TRANSACTION_BODY_PROPERTY = "body"
 let TRANSACTION_PROPERTIES = Set([TRANSACTION_BODY_PROPERTY])
 
 public struct Transaction {
-    // Public Key Hex -> Signature
-    let signatures: [String: String]
-    let body: HeaderImpl<TransactionBody>
+    public let signatures: [String: String]
+    public let body: HeaderImpl<TransactionBody>
     
     func signaturesAreValid() -> Bool {
         if signatures.isEmpty { return false }

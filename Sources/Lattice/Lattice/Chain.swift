@@ -91,10 +91,10 @@ public struct Reorganization: Sendable {
 
 // MARK: - Fork Choice Cache
 
-struct CachedChainWork: Sendable {
-    let tipHash: String
-    let highestIndex: UInt64
-    let lowestParentIndex: UInt64?
+public struct CachedChainWork: Sendable {
+    public let tipHash: String
+    public let highestIndex: UInt64
+    public let lowestParentIndex: UInt64?
 }
 
 // MARK: - Fork Choice
@@ -135,22 +135,27 @@ public actor ChainState {
     var mainChainBlockAtIndex: [UInt64: String]
     var bestChainCache: [String: CachedChainWork]
     var missingBlockHashes: Set<String>
+    var retentionDepth: UInt64
 
     var highestBlock: BlockMeta { hashToBlock[chainTip]! }
     var highestBlockIndex: UInt64 { highestBlock.blockIndex }
+
+    public func getRetentionDepth() -> UInt64 { retentionDepth }
 
     public init(
         chainTip: String,
         mainChainHashes: Set<String>,
         indexToBlockHash: [UInt64: Set<String>],
         hashToBlock: [String: BlockMeta],
-        parentChainBlockHashToBlockHash: [String: String]
+        parentChainBlockHashToBlockHash: [String: String],
+        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
     ) {
         self.chainTip = chainTip
         self.mainChainHashes = mainChainHashes
         self.indexToBlockHash = indexToBlockHash
         self.hashToBlock = hashToBlock
         self.parentChainBlockHashToBlockHash = parentChainBlockHashToBlockHash
+        self.retentionDepth = retentionDepth
         self.bestChainCache = [:]
         self.missingBlockHashes = Set()
         var blockAtIndex: [UInt64: String] = [:]
@@ -162,7 +167,40 @@ public actor ChainState {
         self.mainChainBlockAtIndex = blockAtIndex
     }
 
-    public static func fromGenesis(block: Block) -> ChainState {
+    public func resetFrom(_ persisted: PersistedChainState, retentionDepth: UInt64? = nil) {
+        var newHashToBlock: [String: BlockMeta] = [:]
+        var newIndexToBlockHash: [UInt64: Set<String>] = [:]
+        for block in persisted.blocks {
+            let meta = BlockMeta(
+                blockInfo: BlockInfoImpl(
+                    blockHash: block.blockHash,
+                    previousBlockHash: block.previousBlockHash,
+                    blockIndex: block.blockIndex
+                ),
+                parentChainBlocks: block.parentChainBlocks,
+                childBlockHashes: block.childBlockHashes
+            )
+            newHashToBlock[block.blockHash] = meta
+            newIndexToBlockHash[block.blockIndex, default: Set()].insert(block.blockHash)
+        }
+        self.chainTip = persisted.chainTip
+        self.mainChainHashes = Set(persisted.mainChainHashes)
+        self.indexToBlockHash = newIndexToBlockHash
+        self.hashToBlock = newHashToBlock
+        self.parentChainBlockHashToBlockHash = persisted.parentChainMap
+        self.retentionDepth = retentionDepth ?? self.retentionDepth
+        self.bestChainCache = [:]
+        self.missingBlockHashes = Set(persisted.missingBlockHashes)
+        var blockAtIndex: [UInt64: String] = [:]
+        for hash in self.mainChainHashes {
+            if let block = self.hashToBlock[hash] {
+                blockAtIndex[block.blockIndex] = hash
+            }
+        }
+        self.mainChainBlockAtIndex = blockAtIndex
+    }
+
+    public static func fromGenesis(block: Block, retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE) -> ChainState {
         let blockHeader = BlockHeader(node: block)
         let blockHash = blockHeader.rawCID
         let meta = BlockMeta(
@@ -179,7 +217,8 @@ public actor ChainState {
             mainChainHashes: Set([blockHash]),
             indexToBlockHash: [0: Set([blockHash])],
             hashToBlock: [blockHash: meta],
-            parentChainBlockHashToBlockHash: [:]
+            parentChainBlockHashToBlockHash: [:],
+            retentionDepth: retentionDepth
         )
     }
 
@@ -223,7 +262,7 @@ public actor ChainState {
     ) -> SubmissionResult {
         let blockHash = blockHeader.rawCID
 
-        if block.index + RECENT_BLOCK_DISTANCE < highestBlockIndex {
+        if block.index + retentionDepth < highestBlockIndex {
             return .discarded()
         }
         if parentBlockHeaderAndIndex == nil && block.previousBlock == nil {
@@ -310,7 +349,7 @@ public actor ChainState {
         }
 
         if hashToBlock[previousBlockCID] == nil
-            && block.index + RECENT_BLOCK_DISTANCE > highestBlockIndex
+            && block.index + retentionDepth > highestBlockIndex
         {
             missingBlockHashes.insert(previousBlockCID)
             return SubmissionResult(
@@ -369,7 +408,7 @@ public actor ChainState {
     ) -> SubmissionResult {
         var tempResult: SubmissionResult = .discarded()
 
-        let shouldInsert = block.index + RECENT_BLOCK_DISTANCE >= highestBlockIndex
+        let shouldInsert = block.index + retentionDepth >= highestBlockIndex
             && (reorg.mainChainBlocksAdded[blockHash] != nil
                 || (block.previousBlock != nil && hashToBlock[blockHash] == nil))
 
@@ -715,9 +754,9 @@ public actor ChainState {
         let oldHighest = highestBlockIndex
         chainTip = blockHash
 
-        if oldHighest > RECENT_BLOCK_DISTANCE && newHighestIndex > RECENT_BLOCK_DISTANCE {
-            let oldCutoff = oldHighest - RECENT_BLOCK_DISTANCE
-            let newCutoff = newHighestIndex - RECENT_BLOCK_DISTANCE
+        if oldHighest > retentionDepth && newHighestIndex > retentionDepth {
+            let oldCutoff = oldHighest - retentionDepth
+            let newCutoff = newHighestIndex - retentionDepth
             if newCutoff > oldCutoff {
                 for idx in oldCutoff..<newCutoff {
                     pruneBlocksAtIndex(idx)

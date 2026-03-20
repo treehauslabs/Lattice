@@ -2,11 +2,11 @@ import cashew
 import Foundation
 
 public struct PeerValue: Scalar {
-    let IpAddress: String
-    let refreshed: Int64
-    let fullNode: Bool
-    
-    init(IpAddress: String, refreshed: Int64, fullNode: Bool) {
+    public let IpAddress: String
+    public let refreshed: Int64
+    public let fullNode: Bool
+
+    public init(IpAddress: String, refreshed: Int64, fullNode: Bool) {
         self.IpAddress = IpAddress
         self.refreshed = refreshed
         self.fullNode = fullNode

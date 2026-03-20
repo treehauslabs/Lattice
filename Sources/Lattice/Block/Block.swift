@@ -16,18 +16,18 @@ let CHILD_BLOCKS_PROPERTY = "childBlocks"
 let BLOCK_PROPERTIES = Set([PREVIOUS_BLOCK_PROPERTY, TRANSACTIONS_PROPERTY, SPEC_PROPERTY, PARENT_HOMESTEAD_PROPERTY, HOMESTEAD_PROPERTY, FRONTIER_PROPERTY, CHILD_BLOCKS_PROPERTY])
 
 public struct Block: Hashable {
-    let previousBlock: HeaderImpl<Block>?
-    let transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>
-    let difficulty: UInt256
-    let nextDifficulty: UInt256
-    let spec: HeaderImpl<ChainSpec>
-    let parentHomestead: LatticeStateHeader
-    let homestead: LatticeStateHeader
-    let frontier: LatticeStateHeader
-    let childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>
-    let index: UInt64
-    let timestamp: Int64
-    let nonce: UInt64
+    public let previousBlock: HeaderImpl<Block>?
+    public let transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>
+    public let difficulty: UInt256
+    public let nextDifficulty: UInt256
+    public let spec: HeaderImpl<ChainSpec>
+    public let parentHomestead: LatticeStateHeader
+    public let homestead: LatticeStateHeader
+    public let frontier: LatticeStateHeader
+    public let childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>
+    public let index: UInt64
+    public let timestamp: Int64
+    public let nonce: UInt64
     
     public static func == (lhs: Block, rhs: Block) -> Bool {
         guard let lhsData = lhs.toData() else { return false }

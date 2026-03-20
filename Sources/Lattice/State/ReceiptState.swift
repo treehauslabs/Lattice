@@ -1,12 +1,10 @@
 import cashew
 
 public struct ReceiptKey: LosslessStringConvertible {
-    let directory: String
-    let nonce: UInt128
-    // cryptographic hash of recipient public key
-    let demander: String
-    // Total amount to send
-    let amountDemanded: UInt64
+    public let directory: String
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
     
     init(receiptAction: ReceiptAction) {
         directory = receiptAction.directory
