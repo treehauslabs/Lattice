@@ -126,16 +126,10 @@ final class MinerLoopTests: XCTestCase {
         let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
         let mempool = Mempool()
 
-        let worker = InMemoryTestWorker()
-        if let blockData = result.block.toData() {
-            await worker.storeLocal(cid: ContentIdentifier(rawValue: result.blockHash), data: blockData)
-        }
-        let acornFetcher = AcornFetcher(worker: worker)
-
         let miner = MinerLoop(
             chainState: result.chainState,
             mempool: mempool,
-            fetcher: acornFetcher,
+            fetcher: fetcher,
             spec: config.spec
         )
 
