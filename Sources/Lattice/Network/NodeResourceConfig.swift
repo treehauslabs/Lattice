@@ -1,53 +1,74 @@
 import Foundation
+import Ivy
 
 public struct NodeResourceConfig: Sendable {
-    // Storage: in-memory cache (hot path)
-    public let memoryCacheEntries: Int
-    public let memoryCacheMaxBytes: Int
-
-    // Storage: disk cache (warm path)
-    public let diskCacheEntries: Int
-    public let diskCacheMaxBytes: Int
-
-    // Mining
+    public let memoryBudgetGB: Double
+    public let diskBudgetGB: Double
+    public let mempoolBudgetMB: Double
     public let miningBatchSize: UInt64
-
-    // Network
-    public let mempoolMaxSize: Int
+    public let nodeIdentityHash: [UInt8]?
 
     public init(
-        memoryCacheEntries: Int = 10_000,
-        memoryCacheMaxBytes: Int = 256_000_000,
-        diskCacheEntries: Int = 100_000,
-        diskCacheMaxBytes: Int = 1_000_000_000,
+        memoryBudgetGB: Double = 0.25,
+        diskBudgetGB: Double = 1.0,
+        mempoolBudgetMB: Double = 64.0,
         miningBatchSize: UInt64 = 10_000,
-        mempoolMaxSize: Int = 10_000
+        nodeIdentityHash: [UInt8]? = nil
     ) {
-        self.memoryCacheEntries = memoryCacheEntries
-        self.memoryCacheMaxBytes = memoryCacheMaxBytes
-        self.diskCacheEntries = diskCacheEntries
-        self.diskCacheMaxBytes = diskCacheMaxBytes
+        self.memoryBudgetGB = memoryBudgetGB
+        self.diskBudgetGB = diskBudgetGB
+        self.mempoolBudgetMB = mempoolBudgetMB
         self.miningBatchSize = miningBatchSize
-        self.mempoolMaxSize = mempoolMaxSize
+        self.nodeIdentityHash = nodeIdentityHash
     }
 
     public static let `default` = NodeResourceConfig()
 
     public static let light = NodeResourceConfig(
-        memoryCacheEntries: 1_000,
-        memoryCacheMaxBytes: 64_000_000,
-        diskCacheEntries: 10_000,
-        diskCacheMaxBytes: 256_000_000,
-        miningBatchSize: 5_000,
-        mempoolMaxSize: 1_000
+        memoryBudgetGB: 0.064,
+        diskBudgetGB: 0.25,
+        mempoolBudgetMB: 16.0,
+        miningBatchSize: 5_000
     )
 
     public static let heavy = NodeResourceConfig(
-        memoryCacheEntries: 100_000,
-        memoryCacheMaxBytes: 1_000_000_000,
-        diskCacheEntries: 1_000_000,
-        diskCacheMaxBytes: 10_000_000_000,
-        miningBatchSize: 50_000,
-        mempoolMaxSize: 50_000
+        memoryBudgetGB: 1.0,
+        diskBudgetGB: 10.0,
+        mempoolBudgetMB: 256.0,
+        miningBatchSize: 50_000
     )
+
+    public func memoryBytesPerChain(chainCount: Int) -> Int {
+        let total = Int(memoryBudgetGB * 1_073_741_824)
+        return max(total / max(chainCount, 1), 1_048_576)
+    }
+
+    public func diskBytesPerChain(chainCount: Int) -> Int {
+        let total = Int(diskBudgetGB * 1_073_741_824)
+        return max(total / max(chainCount, 1), 1_048_576)
+    }
+
+    public func mempoolSizePerChain(chainCount: Int) -> Int {
+        let totalBytes = Int(mempoolBudgetMB * 1_048_576)
+        let estimatedTxSize = 512
+        let totalTxs = totalBytes / estimatedTxSize
+        return max(totalTxs / max(chainCount, 1), 100)
+    }
+
+    public func distanceBias(for cid: String) -> Double {
+        guard let nodeHash = nodeIdentityHash else { return 0.0 }
+        let cidHash = Router.hash(cid)
+        let cpl = Router.commonPrefixLength(nodeHash, cidHash)
+        return Double(cpl) / 256.0
+    }
+
+    public func withIdentity(publicKey: String) -> NodeResourceConfig {
+        NodeResourceConfig(
+            memoryBudgetGB: memoryBudgetGB,
+            diskBudgetGB: diskBudgetGB,
+            mempoolBudgetMB: mempoolBudgetMB,
+            miningBatchSize: miningBatchSize,
+            nodeIdentityHash: Router.hash(publicKey)
+        )
+    }
 }

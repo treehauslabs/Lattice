@@ -18,6 +18,8 @@ public actor ChainNetwork: IvyDelegate {
     public let fetcher: AcornFetcher
     public let mempool: Mempool
     private let storage: any AcornCASWorker
+    private let memoryWorker: MemoryCASWorker
+    private let resources: NodeResourceConfig
     public weak var delegate: ChainNetworkDelegate?
     private var subscribedChains: Set<String>
 
@@ -25,21 +27,28 @@ public actor ChainNetwork: IvyDelegate {
         directory: String,
         config: IvyConfig,
         storagePath: URL,
-        resources: NodeResourceConfig = .default
+        resources: NodeResourceConfig = .default,
+        chainCount: Int = 1
     ) async throws {
         self.directory = directory
         self.subscribedChains = Set([directory])
-        self.mempool = Mempool(maxSize: resources.mempoolMaxSize)
+        self.resources = resources
+        self.mempool = Mempool(maxSize: resources.mempoolSizePerChain(chainCount: chainCount))
 
+        let memoryBytes = resources.memoryBytesPerChain(chainCount: chainCount)
+        let memoryEntries = max(memoryBytes / 4096, 100)
         let memory = MemoryCASWorker(
-            capacity: resources.memoryCacheEntries,
-            maxBytes: resources.memoryCacheMaxBytes
+            capacity: memoryEntries,
+            maxBytes: memoryBytes
         )
+        self.memoryWorker = memory
 
+        let diskBytes = resources.diskBytesPerChain(chainCount: chainCount)
+        let diskEntries = max(diskBytes / 4096, 1000)
         let disk = try DiskCASWorker(
             directory: storagePath.appendingPathComponent(directory),
-            capacity: resources.diskCacheEntries,
-            maxBytes: resources.diskCacheMaxBytes
+            capacity: diskEntries,
+            maxBytes: diskBytes
         )
 
         let ivy = Ivy(config: config)
@@ -82,19 +91,32 @@ public actor ChainNetwork: IvyDelegate {
         subscribedChains
     }
 
-    // MARK: - Block Operations
+    // MARK: - Block Operations (Distance-Biased Storage)
 
     public func announceBlock(cid: String) async {
         await ivy.announceBlock(cid: cid)
     }
 
     public func broadcastBlock(cid: String, data: Data) async {
+        boostNearbyContent(cid: cid)
         await fetcher.store(rawCid: cid, data: data)
         await ivy.broadcastBlock(cid: cid, data: data)
     }
 
     public func storeBlock(cid: String, data: Data) async {
+        boostNearbyContent(cid: cid)
         await fetcher.store(rawCid: cid, data: data)
+    }
+
+    private func boostNearbyContent(cid: String) {
+        let bias = resources.distanceBias(for: cid)
+        if bias > 0.1 {
+            let boostCount = Int(bias * 5)
+            let acornCid = ContentIdentifier(rawValue: cid)
+            for _ in 0..<boostCount {
+                memoryWorker.syncStore(cid: acornCid, data: Data())
+            }
+        }
     }
 
     // MARK: - Mempool Operations

@@ -75,6 +75,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         self.config = config
         self.genesisConfig = genesisConfig
 
+        let resourcesWithIdentity = config.resources.withIdentity(publicKey: config.publicKey)
+        let chainCount = max(config.subscribedChains.allValues().count, 1)
         let nexusNetwork = try await ChainNetwork(
             directory: genesisConfig.spec.directory,
             config: IvyConfig(
@@ -84,7 +86,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
                 enableLocalDiscovery: config.enableLocalDiscovery
             ),
             storagePath: config.storagePath,
-            resources: config.resources
+            resources: resourcesWithIdentity,
+            chainCount: chainCount
         )
 
         let persister = ChainStatePersister(
@@ -484,11 +487,14 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         config: IvyConfig
     ) async throws {
         guard networks[directory] == nil else { return }
+        let resourcesWithIdentity = self.config.resources.withIdentity(publicKey: self.config.publicKey)
+        let chainCount = max(networks.count + 1, 1)
         let network = try await ChainNetwork(
             directory: directory,
             config: config,
             storagePath: self.config.storagePath,
-            resources: self.config.resources
+            resources: resourcesWithIdentity,
+            chainCount: chainCount
         )
         await network.setDelegate(self)
         networks[directory] = network
