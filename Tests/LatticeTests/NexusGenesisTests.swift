@@ -18,7 +18,7 @@ final class NexusGenesisTests: XCTestCase {
     private let expectedOwnerAddress = "baguqeerawndzsjdmx4tkndm7evea6qsvrprpv4jvabrzhdzvijf4rivlq3hq"
     private let expectedPremineAmount: UInt64 = 3_689_348_814_741_700_608
     private let expectedBodyCID = "baguqeeratwwb6f6lr3ugi4jxhac57qcsx4c2odufndcudv6r462eet25kkna"
-    private let expectedBlockHash = "baguqeerak3ha67kaj2huraqjlnlhl4uvk22x6gqvfpu5iqgeflnuvumfavxq"
+    private let expectedBlockHash = "baguqeerae7p6crb5k44mtn7iwg7hpls7pikwoo7hjdg2ch5tdluvgfqy774a"
     private let expectedFrontierCID = "baguqeeraqumkraivqlkulsczw6ouj6gnsqv3uxlisxf5gdmb5icr4dgzt3oq"
 
     // MARK: - ChainSpec Validation

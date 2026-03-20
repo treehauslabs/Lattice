@@ -49,7 +49,7 @@ public enum NexusGenesis {
     // MARK: - Chain Identity
 
     public static let expectedBlockHash =
-        "baguqeerak3ha67kaj2huraqjlnlhl4uvk22x6gqvfpu5iqgeflnuvumfavxq"
+        "baguqeerae7p6crb5k44mtn7iwg7hpls7pikwoo7hjdg2ch5tdluvgfqy774a"
 
     // MARK: - Genesis Configuration
 
