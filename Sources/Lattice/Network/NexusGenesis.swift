@@ -46,6 +46,11 @@ public enum NexusGenesis {
         "2166be9fc56bd628c723a68ff5af1ef6ccc43dcff60617431996ad6f006b0a8d" +
         "da161ddb21e396fa6d562210a1fe7e5b5cafa0ac1c09598d38a1b9f9be9fc294"
 
+    // MARK: - Chain Identity
+
+    public static let expectedBlockHash =
+        "baguqeerak3ha67kaj2huraqjlnlhl4uvk22x6gqvfpu5iqgeflnuvumfavxq"
+
     // MARK: - Genesis Configuration
 
     public static let config = GenesisConfig(
@@ -53,6 +58,10 @@ public enum NexusGenesis {
         timestamp: 0,
         difficulty: UInt256.max
     )
+
+    public static func verifyGenesis(_ result: GenesisResult) -> Bool {
+        result.blockHash == expectedBlockHash
+    }
 
     // MARK: - Genesis Creation
 
