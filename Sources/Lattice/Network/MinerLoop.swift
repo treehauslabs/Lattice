@@ -14,6 +14,22 @@ public struct MinerIdentity: Sendable {
     }
 }
 
+public struct ChildMiningContext: Sendable {
+    public let directory: String
+    public let chainState: ChainState
+    public let mempool: Mempool
+    public let fetcher: Fetcher
+    public let spec: ChainSpec
+
+    public init(directory: String, chainState: ChainState, mempool: Mempool, fetcher: Fetcher, spec: ChainSpec) {
+        self.directory = directory
+        self.chainState = chainState
+        self.mempool = mempool
+        self.fetcher = fetcher
+        self.spec = spec
+    }
+}
+
 public protocol MinerDelegate: AnyObject, Sendable {
     func minerDidProduceBlock(_ block: Block, hash: String) async
 }
@@ -24,6 +40,7 @@ public actor MinerLoop {
     private let fetcher: Fetcher
     private let spec: ChainSpec
     private let identity: MinerIdentity?
+    private let childContexts: [ChildMiningContext]
     private var mining: Bool
     private var currentTask: Task<Void, Never>?
     public weak var delegate: MinerDelegate?
@@ -33,13 +50,15 @@ public actor MinerLoop {
         mempool: Mempool,
         fetcher: Fetcher,
         spec: ChainSpec,
-        identity: MinerIdentity? = nil
+        identity: MinerIdentity? = nil,
+        childContexts: [ChildMiningContext] = []
     ) {
         self.chainState = chainState
         self.mempool = mempool
         self.fetcher = fetcher
         self.spec = spec
         self.identity = identity
+        self.childContexts = childContexts
         self.mining = false
     }
 
@@ -79,9 +98,14 @@ public actor MinerLoop {
                     transactions.insert(coinbase, at: 0)
                 }
 
+                let childBlocks = await buildChildBlocks(
+                    nexusBlock: previousBlock
+                )
+
                 let template = try await BlockBuilder.buildBlock(
                     previous: previousBlock,
                     transactions: transactions,
+                    childBlocks: childBlocks,
                     timestamp: Int64(Date().timeIntervalSince1970 * 1000),
                     difficulty: previousBlock.nextDifficulty,
                     nonce: 0,
@@ -179,6 +203,42 @@ public actor MinerLoop {
         }
         guard let balanceStr = try? accountDict.get(key: address) else { return 0 }
         return UInt64(balanceStr) ?? 0
+    }
+
+    // MARK: - Child Block Building (Merged Mining)
+
+    private func buildChildBlocks(nexusBlock: Block) async -> [String: Block] {
+        var result: [String: Block] = [:]
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+
+        for ctx in childContexts {
+            do {
+                let childTipHash = await ctx.chainState.getMainChainTip()
+                let childTipData = try await ctx.fetcher.fetch(rawCid: childTipHash)
+                guard let childTip = Block(data: childTipData) else { continue }
+
+                let childTxs = await ctx.mempool.selectTransactions(
+                    maxCount: max(0, Int(ctx.spec.maxNumberOfTransactionsPerBlock) - 1)
+                )
+
+                let childBlock = try await BlockBuilder.buildBlock(
+                    previous: childTip,
+                    transactions: childTxs,
+                    parentChainBlock: nexusBlock,
+                    timestamp: timestamp,
+                    difficulty: childTip.nextDifficulty,
+                    nonce: 0,
+                    fetcher: ctx.fetcher
+                )
+                result[ctx.directory] = childBlock
+
+                let confirmedCIDs = Set(childTxs.map { $0.body.rawCID })
+                await ctx.mempool.removeAll(txCIDs: confirmedCIDs)
+            } catch {
+                continue
+            }
+        }
+        return result
     }
 
     // MARK: - Helpers

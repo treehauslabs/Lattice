@@ -14,6 +14,9 @@ public struct LatticeNodeConfig: Sendable {
     public let storagePath: URL
     public let enableLocalDiscovery: Bool
     public let persistInterval: UInt64
+    public let subscribedChains: Set<String>
+    public let syncStrategy: SyncStrategy
+    public let retentionDepth: UInt64
 
     public init(
         publicKey: String,
@@ -22,7 +25,10 @@ public struct LatticeNodeConfig: Sendable {
         bootstrapPeers: [PeerEndpoint] = [],
         storagePath: URL,
         enableLocalDiscovery: Bool = true,
-        persistInterval: UInt64 = 100
+        persistInterval: UInt64 = 100,
+        subscribedChains: Set<String> = ["Nexus"],
+        syncStrategy: SyncStrategy = .snapshot,
+        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
     ) {
         self.publicKey = publicKey
         self.privateKey = privateKey
@@ -31,6 +37,11 @@ public struct LatticeNodeConfig: Sendable {
         self.storagePath = storagePath
         self.enableLocalDiscovery = enableLocalDiscovery
         self.persistInterval = persistInterval
+        var subs = subscribedChains
+        subs.insert("Nexus")
+        self.subscribedChains = subs
+        self.syncStrategy = syncStrategy
+        self.retentionDepth = retentionDepth
     }
 }
 
@@ -44,6 +55,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
     private var persisters: [String: ChainStatePersister]
     private var blocksSinceLastPersist: [String: UInt64]
     private var recentPeerBlocks: [String: ContinuousClock.Instant]
+    private var syncTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -70,7 +82,10 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
 
         let genesis: GenesisResult
         if let persisted = persisted {
-            let restoredChain = ChainState.restore(from: persisted)
+            let restoredChain = ChainState.restore(
+                from: persisted,
+                retentionDepth: config.retentionDepth
+            )
             let genesisBlock = try await BlockBuilder.buildGenesis(
                 spec: genesisConfig.spec,
                 timestamp: genesisConfig.timestamp,
@@ -111,6 +126,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
     }
 
     public func stop() async {
+        syncTask?.cancel()
+        syncTask = nil
         for (_, miner) in miners {
             await miner.stop()
         }
@@ -141,6 +158,61 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         }
     }
 
+    // MARK: - Sync
+
+    public var isSyncing: Bool { syncTask != nil }
+
+    private func checkSyncNeeded(
+        peerBlockIndex: UInt64,
+        peerTipCID: String,
+        network: ChainNetwork
+    ) async -> Bool {
+        guard syncTask == nil else { return true }
+        let localHeight = await lattice.nexus.chain.getHighestBlockIndex()
+        let gap = peerBlockIndex > localHeight ? peerBlockIndex - localHeight : 0
+        guard gap > config.retentionDepth else { return false }
+        startSync(peerTipCID: peerTipCID, network: network)
+        return true
+    }
+
+    private func startSync(peerTipCID: String, network: ChainNetwork) {
+        syncTask = Task { [weak self] in
+            guard let self = self else { return }
+            await self.performSync(peerTipCID: peerTipCID, network: network)
+        }
+    }
+
+    private func performSync(peerTipCID: String, network: ChainNetwork) async {
+        let fetcher = await network.fetcher
+        let syncer = ChainSyncer(
+            fetcher: fetcher,
+            store: { [network] cid, data in await network.storeBlock(cid: cid, data: data) },
+            genesisBlockHash: genesisResult.blockHash,
+            retentionDepth: config.retentionDepth
+        )
+
+        do {
+            let result: SyncResult
+            switch config.syncStrategy {
+            case .full:
+                result = try await syncer.syncFull(peerTipCID: peerTipCID)
+            case .snapshot:
+                result = try await syncer.syncSnapshot(peerTipCID: peerTipCID)
+            }
+
+            let nexusDir = genesisConfig.spec.directory
+            await lattice.nexus.chain.resetFrom(
+                result.persisted,
+                retentionDepth: config.retentionDepth
+            )
+            await persistChainState(directory: nexusDir)
+        } catch {
+            // Sync failed — will retry on next peer block
+        }
+
+        syncTask = nil
+    }
+
     // MARK: - Mining
 
     public func startMining(directory: String) async {
@@ -153,12 +225,14 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
             publicKeyHex: config.publicKey,
             privateKeyHex: config.privateKey
         )
+        let childContexts = await buildChildMiningContexts()
         let miner = MinerLoop(
             chainState: chainState,
             mempool: network.mempool,
             fetcher: network.fetcher,
             spec: genesisConfig.spec,
-            identity: identity
+            identity: identity,
+            childContexts: childContexts
         )
         await miner.setDelegate(self)
         miners[directory] = miner
@@ -219,9 +293,19 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         }
         await recordBlockTime(key: key, time: now)
 
-        let directory = await network.directory
         await network.storeBlock(cid: cid, data: data)
 
+        if let block = Block(data: data) {
+            if await checkSyncNeeded(
+                peerBlockIndex: block.index,
+                peerTipCID: cid,
+                network: network
+            ) {
+                return
+            }
+        }
+
+        let directory = await network.directory
         let header = HeaderImpl<Block>(rawCID: cid)
         let fetcher = await network.fetcher
         let _ = await lattice.processBlockHeader(header, fetcher: fetcher)
@@ -238,8 +322,21 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         }
         await recordBlockTime(key: cid, time: now)
 
+        guard !(await isSyncing) else { return }
+
         let fetcher = await network.fetcher
         let header = HeaderImpl<Block>(rawCID: cid)
+
+        if let block = try? await header.resolve(fetcher: fetcher).node {
+            if await checkSyncNeeded(
+                peerBlockIndex: block.index,
+                peerTipCID: cid,
+                network: network
+            ) {
+                return
+            }
+        }
+
         let _ = await lattice.processBlockHeader(header, fetcher: fetcher)
     }
 
@@ -262,6 +359,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
     }
 
     private func handleChildChainDiscovery(directory: String) async {
+        guard config.subscribedChains.contains(directory) else { return }
         guard networks[directory] == nil else { return }
         let ivyConfig = IvyConfig(
             publicKey: config.publicKey,
@@ -292,6 +390,7 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         public let tip: String
         public let mining: Bool
         public let mempoolCount: Int
+        public let syncing: Bool
     }
 
     public func chainStatus() async -> [ChainInfo] {
@@ -302,7 +401,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
         let nexusMempoolCount = await networks[nexusDir]?.mempool.count ?? 0
         result.append(ChainInfo(
             directory: nexusDir, height: nexusHeight, tip: nexusTip,
-            mining: miners[nexusDir] != nil, mempoolCount: nexusMempoolCount
+            mining: miners[nexusDir] != nil, mempoolCount: nexusMempoolCount,
+            syncing: isSyncing
         ))
         let childDirs = await lattice.nexus.childDirectories()
         for dir in childDirs.sorted() {
@@ -312,7 +412,8 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
                 let mc = await networks[dir]?.mempool.count ?? 0
                 result.append(ChainInfo(
                     directory: dir, height: h, tip: t,
-                    mining: miners[dir] != nil, mempoolCount: mc
+                    mining: miners[dir] != nil, mempoolCount: mc,
+                    syncing: false
                 ))
             }
         }
@@ -335,11 +436,32 @@ public actor LatticeNode: ChainNetworkDelegate, MinerDelegate, LatticeDelegate {
             guard fm.fileExists(atPath: stateFile.path) else { continue }
             let persister = ChainStatePersister(storagePath: config.storagePath, directory: dirName)
             guard let persisted = try? await persister.load() else { continue }
-            let childChain = ChainState.restore(from: persisted)
+            let childChain = ChainState.restore(
+                from: persisted,
+                retentionDepth: config.retentionDepth
+            )
             let childLevel = ChainLevel(chain: childChain, children: [:])
             await lattice.nexus.restoreChildChain(directory: dirName, level: childLevel)
             persisters[dirName] = persister
         }
+    }
+
+    private func buildChildMiningContexts() async -> [ChildMiningContext] {
+        var contexts: [ChildMiningContext] = []
+        let childDirs = await lattice.nexus.childDirectories()
+        for dir in childDirs {
+            guard config.subscribedChains.contains(dir) else { continue }
+            guard let network = networks[dir] else { continue }
+            guard let childChainState = await lattice.nexus.children[dir]?.chain else { continue }
+            contexts.append(ChildMiningContext(
+                directory: dir,
+                chainState: childChainState,
+                mempool: network.mempool,
+                fetcher: network.fetcher,
+                spec: genesisConfig.spec
+            ))
+        }
+        return contexts
     }
 
     public func registerChainNetwork(
