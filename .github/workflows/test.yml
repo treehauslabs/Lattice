@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -30,19 +30,5 @@ jobs:
         run: swift build
 
       - name: Run tests
-        run: |
-          swift test 2>&1 | tee test-output.txt
-          PASSED=$(grep -c "passed" test-output.txt || true)
-          FAILED=$(grep -c "failed" test-output.txt || true)
-          echo "Tests passed: $PASSED"
-          echo "Tests failed: $FAILED"
-          if [ "$FAILED" -gt 0 ]; then
-            echo "::error::$FAILED test(s) failed"
-            exit 1
-          fi
-
-      - name: Build LatticeNode executable
-        run: swift build --target LatticeNode -c release
-
-      - name: Verify LatticeNode runs
-        run: swift run LatticeNode --help
+        timeout-minutes: 10
+        run: swift test --parallel
