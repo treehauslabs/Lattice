@@ -56,7 +56,7 @@ public struct CryptoUtils {
     }
 }
 
-extension Data {
+public extension Data {
     init?(hex: String) {
         let cleanHex = hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
         
@@ -79,6 +79,6 @@ extension Data {
     }
     
     var hexString: String {
-        return map { String(format: "%02x", $0) }.joined()
+        map { String(format: "%02x", $0) }.joined()
     }
 }

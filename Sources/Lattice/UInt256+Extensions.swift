@@ -2,8 +2,8 @@ import Foundation
 import UInt256
 import Crypto
 
-extension UInt256 {
-    
+public extension UInt256 {
+
     /// Converts UInt256 to hexadecimal string with "0x" prefix
     /// - Returns: A hexadecimal string representation with "0x" prefix
     func toPrefixedHexString() -> String {
@@ -51,7 +51,7 @@ extension UInt256: Codable {
     }
 }
 
-extension UInt256 {
+public extension UInt256 {
     /// Creates a UInt256 hash from data using SHA-256
     /// - Parameter data: The data to hash
     /// - Returns: A UInt256 representing the SHA-256 hash

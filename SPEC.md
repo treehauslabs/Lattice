@@ -284,7 +284,11 @@ A non-genesis nexus block `B` with previous block `P` is valid if and only if:
 12. All genesis actions valid
 13. Frontier correctness
 
+**Nexus validation does not validate child blocks.** The `childBlocks` field is committed to via `CID(B.childBlocks)` in the difficulty hash (section 5.4), so the miner commits to a specific set of child blocks when mining. However, child blocks are validated independently *after* the nexus block is accepted (section 5.3). An invalid child block does not affect the nexus block's validity, other child chains, or the nexus chain's state. This means a nexus-only miner only needs to compute the nexus portion of the block -- child block validation is deferred to nodes that participate in those child chains.
+
 ### 5.3 Child Chain Block Validation
+
+Child blocks embedded in a nexus block via the `childBlocks` field are **optional**. They are processed independently after the parent nexus block is accepted onto the main chain. Invalid child blocks are silently skipped without affecting the parent block or sibling child chains.
 
 A child chain block `B` with previous block `P` and parent chain block `Q` is valid if and only if:
 
@@ -550,16 +554,32 @@ ChainState = actor {
 }
 ```
 
-### 9.3 Block Submission
+### 9.3 Nexus Block Processing
 
-When a new block arrives:
+When a new nexus block arrives, processing happens in two phases:
 
-1. If `block.index + RECENT_BLOCK_DISTANCE < highestBlockIndex`, discard (too old)
-2. If block hash already known, handle as duplicate (may add parent chain reference)
-3. Insert into `hashToBlock` and `indexToBlockHash`
-4. If previous block is current chain tip, extend main chain
-5. If previous block is unknown and block is recent, request the missing parent
-6. Otherwise, evaluate fork choice via `checkForReorg()`
+**Phase 1: Nexus validation and submission** (required)
+
+1. Validate the block via `validateNexus()` (section 5.2) -- child blocks are NOT validated here
+2. Verify proof-of-work: `difficultyHash(B) < B.difficulty`
+3. Submit to `ChainState`:
+   a. If `block.index + RECENT_BLOCK_DISTANCE < highestBlockIndex`, discard (too old)
+   b. If block hash already known, handle as duplicate (may add parent chain reference)
+   c. Insert into `hashToBlock` and `indexToBlockHash`
+   d. If previous block is current chain tip, extend main chain
+   e. If previous block is unknown and block is recent, request the missing parent
+   f. Otherwise, evaluate fork choice via `checkForReorg()`
+
+**Phase 2: Child block extraction** (deferred, independent)
+
+Only after the nexus block is accepted onto the main chain:
+
+4. Extract child blocks from `B.childBlocks` Merkle dictionary
+5. For each child block, validate independently against its child chain's rules (section 5.3)
+6. Invalid child blocks are silently skipped -- they do not affect the nexus block or other children
+7. Newly discovered child chains (genesis blocks) are registered in the chain hierarchy
+
+This two-phase design means nexus miners only need to perform nexus-level validation and mining. Child block validation is entirely the responsibility of nodes that participate in those child chains.
 
 ### 9.4 Reorganization
 

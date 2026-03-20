@@ -135,6 +135,16 @@ public struct TipBlockSnapshot: Sendable {
     public let nextDifficulty: UInt256
     public let index: UInt64
     public let timestamp: Int64
+
+    public init(frontierCID: String, homesteadCID: String, specCID: String, difficulty: UInt256, nextDifficulty: UInt256, index: UInt64, timestamp: Int64) {
+        self.frontierCID = frontierCID
+        self.homesteadCID = homesteadCID
+        self.specCID = specCID
+        self.difficulty = difficulty
+        self.nextDifficulty = nextDifficulty
+        self.index = index
+        self.timestamp = timestamp
+    }
 }
 
 public actor ChainState {

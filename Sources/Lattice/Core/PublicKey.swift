@@ -3,6 +3,10 @@ import Foundation
 
 public struct PublicKey: Scalar {
     public let key: String
+
+    public init(key: String) {
+        self.key = key
+    }
 }
 
 public extension PublicKey {

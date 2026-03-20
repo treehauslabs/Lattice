@@ -15,6 +15,21 @@ public struct PersistedChainState: Codable, Sendable {
     public let blocks: [PersistedBlockMeta]
     public let parentChainMap: [String: String]
     public let missingBlockHashes: [String]
+
+    public init(chainTip: String, tipFrontierCID: String?, tipHomesteadCID: String?, tipSpecCID: String?, tipDifficulty: String?, tipNextDifficulty: String?, tipIndex: UInt64?, tipTimestamp: Int64?, mainChainHashes: [String], blocks: [PersistedBlockMeta], parentChainMap: [String: String], missingBlockHashes: [String]) {
+        self.chainTip = chainTip
+        self.tipFrontierCID = tipFrontierCID
+        self.tipHomesteadCID = tipHomesteadCID
+        self.tipSpecCID = tipSpecCID
+        self.tipDifficulty = tipDifficulty
+        self.tipNextDifficulty = tipNextDifficulty
+        self.tipIndex = tipIndex
+        self.tipTimestamp = tipTimestamp
+        self.mainChainHashes = mainChainHashes
+        self.blocks = blocks
+        self.parentChainMap = parentChainMap
+        self.missingBlockHashes = missingBlockHashes
+    }
 }
 
 public struct PersistedBlockMeta: Codable, Sendable {
@@ -23,6 +38,14 @@ public struct PersistedBlockMeta: Codable, Sendable {
     public let blockIndex: UInt64
     public let parentChainBlocks: [String: UInt64?]
     public let childBlockHashes: [String]
+
+    public init(blockHash: String, previousBlockHash: String?, blockIndex: UInt64, parentChainBlocks: [String: UInt64?], childBlockHashes: [String]) {
+        self.blockHash = blockHash
+        self.previousBlockHash = previousBlockHash
+        self.blockIndex = blockIndex
+        self.parentChainBlocks = parentChainBlocks
+        self.childBlockHashes = childBlockHashes
+    }
 }
 
 public extension ChainState {

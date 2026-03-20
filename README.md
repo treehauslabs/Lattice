@@ -246,8 +246,8 @@ A `Block` is the fundamental unit of the chain. It contains:
 
 Block validation is split by context:
 - **Genesis blocks** (`validateGenesis`): No parent, empty initial state, valid transactions, correct frontier
-- **Nexus blocks** (`validateNexus`): Full validation including parent continuity, difficulty, timestamps, deposits/withdrawals
-- **Child blocks** (`validate(nexusHash:parentChainBlock:)`): Validated against parent chain state, timestamps synchronized with parent
+- **Nexus blocks** (`validateNexus`): Validates only the nexus portion -- parent continuity, difficulty, timestamps, transactions, frontier. Child blocks embedded in `childBlocks` are **not** validated here; they are processed independently after the nexus block is accepted. A nexus miner only needs to mine the nexus chain.
+- **Child blocks** (`validate(nexusHash:parentChainBlock:)`): Validated independently by nodes participating in the child chain. Invalid child blocks are silently skipped without affecting the parent nexus block or sibling child chains.
 
 ### Transactions
 

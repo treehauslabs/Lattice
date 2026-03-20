@@ -8,13 +8,27 @@ public protocol LatticeDelegate: AnyObject, Sendable {
 public actor Lattice {
     public let nexus: ChainLevel
     public weak var delegate: LatticeDelegate?
+    private var subscribedChains: Set<String>
 
-    public init(nexus: ChainLevel) {
+    public init(nexus: ChainLevel, subscribedChains: Set<String> = []) {
         self.nexus = nexus
+        self.subscribedChains = subscribedChains
     }
 
     public func setDelegate(_ delegate: LatticeDelegate) {
         self.delegate = delegate
+    }
+
+    public func subscribe(to directory: String) {
+        subscribedChains.insert(directory)
+    }
+
+    public func unsubscribe(from directory: String) {
+        subscribedChains.remove(directory)
+    }
+
+    public func getSubscribedChains() -> Set<String> {
+        subscribedChains
     }
 
     public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
@@ -36,7 +50,8 @@ public actor Lattice {
                 let newChildren = await nexus.extractAndProcessChildBlocks(
                     parentBlock: resolvedBlock,
                     parentBlockHeader: blockHeader,
-                    fetcher: fetcher
+                    fetcher: fetcher,
+                    subscribedChains: subscribedChains
                 )
                 for dir in newChildren {
                     await delegate?.lattice(self, didDiscoverChildChain: dir)
@@ -106,11 +121,17 @@ public actor ChainLevel {
         parentBlock: Block,
         parentBlockHeader: BlockHeader,
         fetcher: Fetcher,
+        subscribedChains: Set<String> = [],
         ancestorSpecs: [ChainSpec] = []
     ) async -> [String] {
         guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return [] }
-        guard let allChildEntries = try? childBlocksNode.allKeysAndValues() else { return [] }
-        if allChildEntries.isEmpty { return [] }
+        guard let allChildKeys = try? childBlocksNode.allKeys() else { return [] }
+        if allChildKeys.isEmpty { return [] }
+
+        let relevantKeys = subscribedChains.isEmpty
+            ? Set(allChildKeys)
+            : Set(allChildKeys).intersection(subscribedChains)
+        if relevantKeys.isEmpty { return [] }
 
         let parentBlockIndex = await chain.getHighestBlockIndex()
 
@@ -120,8 +141,9 @@ public actor ChainLevel {
         }
 
         var newChildDirectories: [String] = []
-        for (directory, childBlockHeader) in allChildEntries {
+        for directory in relevantKeys {
             if children[directory] == nil {
+                guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
                 if let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node,
                    childBlock.index == 0, childBlock.previousBlock == nil {
                     registerChildChain(directory: directory, genesisBlock: childBlock)
@@ -131,10 +153,11 @@ public actor ChainLevel {
         }
 
         await withTaskGroup(of: Void.self) { group in
-            for (directory, childBlockHeader) in allChildEntries {
+            for directory in relevantKeys {
                 guard let childLevel = children[directory] else { continue }
+                guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
 
-                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs] in
+                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs, subscribedChains] in
                     guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else { return }
 
                     let isValid = await childLevel.validateChildBlock(
@@ -158,6 +181,7 @@ public actor ChainLevel {
                         parentBlock: childBlock,
                         parentBlockHeader: childBlockHeader,
                         fetcher: fetcher,
+                        subscribedChains: subscribedChains,
                         ancestorSpecs: allAncestorSpecs
                     )
                 }
