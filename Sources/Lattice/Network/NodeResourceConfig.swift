@@ -64,4 +64,40 @@ public struct NodeResourceConfig: Sendable {
             nodeIdentityHash: Router.hash(publicKey)
         )
     }
+
+    public static func autosize(
+        dataDir: URL,
+        maxMemoryGB: Double? = nil,
+        maxDiskGB: Double? = nil
+    ) -> NodeResourceConfig {
+        let systemRAMBytes = Double(ProcessInfo.processInfo.physicalMemory)
+        let systemRAMGB = systemRAMBytes / 1_073_741_824
+
+        let freeDiskBytes = (try? FileManager.default.attributesOfFileSystem(
+            forPath: dataDir.path
+        )[.systemFreeSize] as? Int) ?? 0
+        let freeDiskGB = Double(freeDiskBytes) / 1_073_741_824
+
+        // Memory: 25% of system RAM, minimum 128MB, reserve 1GB for OS
+        var memGB = max((systemRAMGB - 1.0) * 0.25, 0.128)
+        if let cap = maxMemoryGB { memGB = min(memGB, cap) }
+
+        // Disk: 50% of free disk, minimum 1GB, reserve 5GB for OS
+        var diskGB = max((freeDiskGB - 5.0) * 0.50, 1.0)
+        if let cap = maxDiskGB { diskGB = min(diskGB, cap) }
+
+        // Mempool: 1% of memory budget, minimum 16MB
+        let mempoolMB = max(memGB * 1024 * 0.01, 16.0)
+
+        // Mining batch: scale with available cores
+        let cores = ProcessInfo.processInfo.activeProcessorCount
+        let batch = UInt64(max(cores * 5_000, 10_000))
+
+        return NodeResourceConfig(
+            memoryBudgetGB: memGB,
+            diskBudgetGB: diskGB,
+            mempoolBudgetMB: mempoolMB,
+            miningBatchSize: batch
+        )
+    }
 }
