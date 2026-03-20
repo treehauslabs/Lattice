@@ -2,7 +2,6 @@ import Foundation
 import Crypto
 import cashew
 import UInt256
-import ArrayTrie
 import CollectionConcurrencyKit
 
 public extension Block {

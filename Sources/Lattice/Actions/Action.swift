@@ -6,6 +6,12 @@ public struct Action: Codable, Sendable {
     public let key: String
     public let oldValue: String?
     public let newValue: String?
+
+    public init(key: String, oldValue: String?, newValue: String?) {
+        self.key = key
+        self.oldValue = oldValue
+        self.newValue = newValue
+    }
     
     // WARNING: Should always run verify before this
     public func stateDelta() throws -> Int {

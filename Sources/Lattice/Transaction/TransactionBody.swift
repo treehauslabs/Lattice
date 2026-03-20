@@ -13,6 +13,19 @@ public struct TransactionBody: Scalar {
     public let signers: [String]
     public let fee: UInt64
     public let nonce: UInt64
+
+    public init(accountActions: [AccountAction], actions: [Action], depositActions: [DepositAction], genesisActions: [GenesisAction], peerActions: [PeerAction], receiptActions: [ReceiptAction], withdrawalActions: [WithdrawalAction], signers: [String], fee: UInt64, nonce: UInt64) {
+        self.accountActions = accountActions
+        self.actions = actions
+        self.depositActions = depositActions
+        self.genesisActions = genesisActions
+        self.peerActions = peerActions
+        self.receiptActions = receiptActions
+        self.withdrawalActions = withdrawalActions
+        self.signers = signers
+        self.fee = fee
+        self.nonce = nonce
+    }
     
     func withdrawalsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
         for withdrawal in withdrawalActions {

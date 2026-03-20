@@ -2,7 +2,6 @@ import Foundation
 import Crypto
 import cashew
 import UInt256
-import ArrayTrie
 import CollectionConcurrencyKit
 
 let PREVIOUS_BLOCK_PROPERTY = "previous"
@@ -28,6 +27,21 @@ public struct Block: Hashable {
     public let index: UInt64
     public let timestamp: Int64
     public let nonce: UInt64
+
+    public init(previousBlock: HeaderImpl<Block>?, transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: UInt256, nextDifficulty: UInt256, spec: HeaderImpl<ChainSpec>, parentHomestead: LatticeStateHeader, homestead: LatticeStateHeader, frontier: LatticeStateHeader, childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: UInt64, timestamp: Int64, nonce: UInt64) {
+        self.previousBlock = previousBlock
+        self.transactions = transactions
+        self.difficulty = difficulty
+        self.nextDifficulty = nextDifficulty
+        self.spec = spec
+        self.parentHomestead = parentHomestead
+        self.homestead = homestead
+        self.frontier = frontier
+        self.childBlocks = childBlocks
+        self.index = index
+        self.timestamp = timestamp
+        self.nonce = nonce
+    }
     
     public static func == (lhs: Block, rhs: Block) -> Bool {
         guard let lhsData = lhs.toData() else { return false }

@@ -276,6 +276,10 @@ public actor ChainState {
         missingBlockHashes
     }
 
+    public func getMainChainBlockHash(atIndex index: UInt64) -> String? {
+        mainChainBlockAtIndex[index]
+    }
+
     // MARK: - Block Submission
 
     private func updateTipSnapshot(block: Block) {

@@ -6,6 +6,11 @@ let TRANSACTION_PROPERTIES = Set([TRANSACTION_BODY_PROPERTY])
 public struct Transaction {
     public let signatures: [String: String]
     public let body: HeaderImpl<TransactionBody>
+
+    public init(signatures: [String: String], body: HeaderImpl<TransactionBody>) {
+        self.signatures = signatures
+        self.body = body
+    }
     
     func signaturesAreValid() -> Bool {
         if signatures.isEmpty { return false }
