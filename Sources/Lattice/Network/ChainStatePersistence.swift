@@ -1,8 +1,16 @@
 import Foundation
 import cashew
+import UInt256
 
 public struct PersistedChainState: Codable, Sendable {
     public let chainTip: String
+    public let tipFrontierCID: String?
+    public let tipHomesteadCID: String?
+    public let tipSpecCID: String?
+    public let tipDifficulty: String?
+    public let tipNextDifficulty: String?
+    public let tipIndex: UInt64?
+    public let tipTimestamp: Int64?
     public let mainChainHashes: [String]
     public let blocks: [PersistedBlockMeta]
     public let parentChainMap: [String: String]
@@ -32,6 +40,13 @@ public extension ChainState {
         }
         return PersistedChainState(
             chainTip: chainTip,
+            tipFrontierCID: tipSnapshot?.frontierCID,
+            tipHomesteadCID: tipSnapshot?.homesteadCID,
+            tipSpecCID: tipSnapshot?.specCID,
+            tipDifficulty: tipSnapshot?.difficulty.toHexString(),
+            tipNextDifficulty: tipSnapshot?.nextDifficulty.toHexString(),
+            tipIndex: tipSnapshot?.index,
+            tipTimestamp: tipSnapshot?.timestamp,
             mainChainHashes: Array(mainChainHashes),
             blocks: blocks,
             parentChainMap: parentChainBlockHashToBlockHash,
@@ -58,15 +73,35 @@ public extension ChainState {
             hashToBlock[block.blockHash] = meta
             indexToBlockHash[block.blockIndex, default: Set()].insert(block.blockHash)
         }
-        let chain = ChainState(
+        var snapshot: TipBlockSnapshot? = nil
+        if let frontierCID = persisted.tipFrontierCID,
+           let homesteadCID = persisted.tipHomesteadCID,
+           let specCID = persisted.tipSpecCID,
+           let diffHex = persisted.tipDifficulty,
+           let nextDiffHex = persisted.tipNextDifficulty,
+           let index = persisted.tipIndex,
+           let timestamp = persisted.tipTimestamp,
+           let diff = UInt256(diffHex, radix: 16),
+           let nextDiff = UInt256(nextDiffHex, radix: 16) {
+            snapshot = TipBlockSnapshot(
+                frontierCID: frontierCID,
+                homesteadCID: homesteadCID,
+                specCID: specCID,
+                difficulty: diff,
+                nextDifficulty: nextDiff,
+                index: index,
+                timestamp: timestamp
+            )
+        }
+        return ChainState(
             chainTip: persisted.chainTip,
             mainChainHashes: Set(persisted.mainChainHashes),
             indexToBlockHash: indexToBlockHash,
             hashToBlock: hashToBlock,
             parentChainBlockHashToBlockHash: persisted.parentChainMap,
-            retentionDepth: retentionDepth
+            retentionDepth: retentionDepth,
+            tipSnapshot: snapshot
         )
-        return chain
     }
 }
 

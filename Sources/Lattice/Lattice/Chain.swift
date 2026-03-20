@@ -1,4 +1,5 @@
 import cashew
+import UInt256
 
 public let RECENT_BLOCK_DISTANCE: UInt64 = 1000
 public typealias BlockHeader = HeaderImpl<Block>
@@ -126,6 +127,16 @@ func minOptional(_ a: UInt64?, _ b: UInt64?) -> UInt64? {
 
 // MARK: - ChainState
 
+public struct TipBlockSnapshot: Sendable {
+    public let frontierCID: String
+    public let homesteadCID: String
+    public let specCID: String
+    public let difficulty: UInt256
+    public let nextDifficulty: UInt256
+    public let index: UInt64
+    public let timestamp: Int64
+}
+
 public actor ChainState {
     var chainTip: String
     var mainChainHashes: Set<String>
@@ -136,6 +147,7 @@ public actor ChainState {
     var bestChainCache: [String: CachedChainWork]
     var missingBlockHashes: Set<String>
     var retentionDepth: UInt64
+    public private(set) var tipSnapshot: TipBlockSnapshot?
 
     var highestBlock: BlockMeta { hashToBlock[chainTip]! }
     var highestBlockIndex: UInt64 { highestBlock.blockIndex }
@@ -148,7 +160,8 @@ public actor ChainState {
         indexToBlockHash: [UInt64: Set<String>],
         hashToBlock: [String: BlockMeta],
         parentChainBlockHashToBlockHash: [String: String],
-        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE
+        retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE,
+        tipSnapshot: TipBlockSnapshot? = nil
     ) {
         self.chainTip = chainTip
         self.mainChainHashes = mainChainHashes
@@ -156,6 +169,7 @@ public actor ChainState {
         self.hashToBlock = hashToBlock
         self.parentChainBlockHashToBlockHash = parentChainBlockHashToBlockHash
         self.retentionDepth = retentionDepth
+        self.tipSnapshot = tipSnapshot
         self.bestChainCache = [:]
         self.missingBlockHashes = Set()
         var blockAtIndex: [UInt64: String] = [:]
@@ -218,7 +232,16 @@ public actor ChainState {
             indexToBlockHash: [0: Set([blockHash])],
             hashToBlock: [blockHash: meta],
             parentChainBlockHashToBlockHash: [:],
-            retentionDepth: retentionDepth
+            retentionDepth: retentionDepth,
+            tipSnapshot: TipBlockSnapshot(
+                frontierCID: block.frontier.rawCID,
+                homesteadCID: block.homestead.rawCID,
+                specCID: block.spec.rawCID,
+                difficulty: block.difficulty,
+                nextDifficulty: block.nextDifficulty,
+                index: block.index,
+                timestamp: block.timestamp
+            )
         )
     }
 
@@ -254,6 +277,18 @@ public actor ChainState {
     }
 
     // MARK: - Block Submission
+
+    private func updateTipSnapshot(block: Block) {
+        tipSnapshot = TipBlockSnapshot(
+            frontierCID: block.frontier.rawCID,
+            homesteadCID: block.homestead.rawCID,
+            specCID: block.spec.rawCID,
+            difficulty: block.difficulty,
+            nextDifficulty: block.nextDifficulty,
+            index: block.index,
+            timestamp: block.timestamp
+        )
+    }
 
     public func submitBlock(
         parentBlockHeaderAndIndex: (String, UInt64?)?,
@@ -291,11 +326,15 @@ public actor ChainState {
             )
         }
 
-        if result.extendsMainChain { return .extendsMainChain() }
+        if result.extendsMainChain {
+            updateTipSnapshot(block: block)
+            return .extendsMainChain()
+        }
         if result.needsChildBlock { return result }
 
         let meta = hashToBlock[blockHash]!
         if let reorg = checkForReorg(block: meta) {
+            updateTipSnapshot(block: block)
             return SubmissionResult(
                 addedBlock: true,
                 extendsMainChain: false,

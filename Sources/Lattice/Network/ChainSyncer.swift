@@ -211,6 +211,13 @@ public actor ChainSyncer {
 
         let persisted = PersistedChainState(
             chainTip: blocks.last!.hash,
+            tipFrontierCID: nil,
+            tipHomesteadCID: nil,
+            tipSpecCID: nil,
+            tipDifficulty: nil,
+            tipNextDifficulty: nil,
+            tipIndex: nil,
+            tipTimestamp: nil,
             mainChainHashes: mainChainHashes,
             blocks: persistedBlocks,
             parentChainMap: [:],
