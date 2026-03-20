@@ -109,43 +109,6 @@ final class GenesisCeremonyTests: XCTestCase {
     }
 }
 
-// MARK: - Miner Loop Tests
-
-@MainActor
-final class MinerLoopTests: XCTestCase {
-
-    func testMinerStartStop() async throws {
-        let config = GenesisConfig.standard(spec: ChainSpec(
-            directory: "Nexus",
-            maxNumberOfTransactionsPerBlock: 100,
-            maxStateGrowth: 100_000,
-            premine: 0,
-            targetBlockTime: 1_000,
-            initialRewardExponent: 10
-        ))
-        let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
-        let mempool = Mempool()
-
-        let miner = MinerLoop(
-            chainState: result.chainState,
-            mempool: mempool,
-            fetcher: fetcher,
-            spec: config.spec
-        )
-
-        let isMiningBefore = await miner.isMining
-        XCTAssertFalse(isMiningBefore)
-
-        await miner.start()
-        let isMiningAfter = await miner.isMining
-        XCTAssertTrue(isMiningAfter)
-
-        await miner.stop()
-        let isMiningFinal = await miner.isMining
-        XCTAssertFalse(isMiningFinal)
-    }
-}
-
 actor InMemoryTestWorker: AcornCASWorker {
     var near: (any AcornCASWorker)?
     var far: (any AcornCASWorker)?

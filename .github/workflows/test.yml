@@ -34,7 +34,6 @@ jobs:
         run: >-
           swift test --parallel
           --skip TCPIntegrationTests
-          --skip MinerLoopTests
           --skip MultiNodeLifecycleTests
           --skip MultiNodeSpawnTests
           --skip MultiNodeTransactionTests
