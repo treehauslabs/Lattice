@@ -13,13 +13,11 @@ import Foundation
 
 final class ChainSpecPropertyTests: XCTestCase {
 
-    // Property: rewardAtBlock(n) == initialReward >> ((n + premine) / halvingInterval)
-    // The reward function is a pure function of the block index.
     func testRewardFunctionIsPure() {
         let specs: [ChainSpec] = [
             .bitcoin, .ethereum, .development,
-            ChainSpec(maxNumberOfTransactionsPerBlock: 500, maxStateGrowth: 5000, premine: 42, targetBlockTime: 5000, initialRewardExponent: 12),
-            ChainSpec(maxNumberOfTransactionsPerBlock: 1, maxStateGrowth: 1, premine: 0, targetBlockTime: 1, initialRewardExponent: 1),
+            ChainSpec(maxNumberOfTransactionsPerBlock: 500, maxStateGrowth: 5000, premine: 42, targetBlockTime: 5000, initialReward: 4096, halvingInterval: 50_000),
+            ChainSpec(maxNumberOfTransactionsPerBlock: 1, maxStateGrowth: 1, premine: 0, targetBlockTime: 1, initialReward: 1, halvingInterval: 1),
         ]
 
         for spec in specs {
@@ -33,17 +31,15 @@ final class ChainSpecPropertyTests: XCTestCase {
         }
     }
 
-    // Property: For all valid specs, totalRewards(n) == sum(rewardAtBlock(i) for i in 0..<n)
     func testTotalRewardsIsExactSum() {
         let specs: [ChainSpec] = [
-            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: 4),
-            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 5, targetBlockTime: 1000, initialRewardExponent: 4),
-            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 100, targetBlockTime: 1000, initialRewardExponent: 8),
+            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: 16, halvingInterval: 500),
+            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 5, targetBlockTime: 1000, initialReward: 16, halvingInterval: 500),
+            ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 100, targetBlockTime: 1000, initialReward: 256, halvingInterval: 500),
         ]
 
         for spec in specs {
-            let halvingInterval = spec.halvingInterval
-            let testBlocks: [UInt64] = [0, 1, 10, 100, halvingInterval - 1, halvingInterval, halvingInterval + 1, halvingInterval * 2]
+            let testBlocks: [UInt64] = [0, 1, 10, 100, 500, 1000]
             for blockCount in testBlocks {
                 let total = spec.totalRewards(upToBlock: blockCount)
                 var manualSum: UInt64 = 0
@@ -51,42 +47,37 @@ final class ChainSpecPropertyTests: XCTestCase {
                     manualSum += spec.rewardAtBlock(i)
                 }
                 XCTAssertEqual(total, manualSum,
-                               "totalRewards(\(blockCount)) != manual sum for spec with exponent=\(spec.initialRewardExponent), premine=\(spec.premine)")
+                               "totalRewards(\(blockCount)) != manual sum for reward=\(spec.initialReward), premine=\(spec.premine)")
             }
         }
     }
 
-    // Property: rewardAtBlock is monotonically non-increasing
     func testRewardNonIncreasing() {
-        let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: 4)
+        let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: 16, halvingInterval: 500)
         let halvingInterval = spec.halvingInterval
 
         var prev = spec.rewardAtBlock(0)
         for i: UInt64 in 0..<20 {
-            let (block, overflow) = halvingInterval.multipliedReportingOverflow(by: i)
-            guard !overflow else { break }
-            let scaled = block / 4
-            let reward = spec.rewardAtBlock(scaled)
+            let block = halvingInterval * i
+            let reward = spec.rewardAtBlock(block)
             XCTAssertTrue(reward <= prev,
-                          "Reward increased from \(prev) to \(reward) at block \(scaled)")
+                          "Reward increased from \(prev) to \(reward) at block \(block)")
             prev = reward
         }
     }
 
-    // Property: premineAmount() == totalRewards(premine) for all valid specs
     func testPremineAmountEqualsTotalRewards() {
-        let premineValues: [UInt64] = [0, 1, 10, 100, 1000, 50000]
+        let premineValues: [UInt64] = [0, 1, 10, 100, 1000, 5000]
         for premine in premineValues {
-            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: premine, targetBlockTime: 1000, initialRewardExponent: 15)
+            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: premine, targetBlockTime: 1000, initialReward: 32_768, halvingInterval: 100_000)
             guard spec.isValid else { continue }
             XCTAssertEqual(spec.premineAmount(), spec.totalRewards(upToBlock: premine),
                            "premineAmount != totalRewards(premine) for premine=\(premine)")
         }
     }
 
-    // Property: totalRewards(a + b) == totalRewards(a) + sum(rewardAtBlock(i) for i in a..<a+b)
     func testTotalRewardsAdditivity() {
-        let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: 6)
+        let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: 64, halvingInterval: 500)
 
         for _ in 0..<50 {
             let a = UInt64.random(in: 0...1000)
@@ -99,56 +90,37 @@ final class ChainSpecPropertyTests: XCTestCase {
         }
     }
 
-    // Property: halvingInterval * initialReward == 2^64 (the total bit space)
-    func testHalvingIntervalTimesRewardEquals2Pow64() {
-        for exp: UInt8 in 1...63 {
-            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: exp)
-            guard spec.isValid else { continue }
-            let product = spec.halvingInterval.multipliedReportingOverflow(by: spec.initialReward)
-            XCTAssertTrue(product.overflow,
-                          "halvingInterval * initialReward should overflow UInt64 (==2^64) for exponent=\(exp)")
-            XCTAssertEqual(product.partialValue, 0,
-                           "Overflow should wrap to exactly 0 for exponent=\(exp)")
+    func testTotalHalvingsMatchesRewardBits() {
+        let testCases: [(UInt64, UInt64)] = [
+            (1, 1), (2, 2), (4, 3), (8, 4), (16, 5), (1024, 11), (65536, 17),
+        ]
+        for (reward, expectedHalvings) in testCases {
+            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: reward, halvingInterval: 1000)
+            XCTAssertEqual(spec.totalHalvings, expectedHalvings)
         }
     }
 
-    // Property: totalHalvings == initialRewardExponent
-    func testTotalHalvingsEqualsExponent() {
-        for exp: UInt8 in 1...63 {
-            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: exp)
-            guard spec.isValid else { continue }
-            XCTAssertEqual(spec.totalHalvings, exp)
-        }
-    }
-
-    // Property: After (totalHalvings - 1) halvings, reward is 2
-    // initialReward = 2^exp, after (exp-1) halvings: 2^exp >> (exp-1) = 2
     func testRewardAfterPenultimateHalvingIsTwo() {
-        for exp: UInt8 in [2, 4, 8, 16, 32] {
-            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: exp)
-            guard spec.isValid else { continue }
-            let (penultimateBlock, overflow) = spec.halvingInterval.multipliedReportingOverflow(by: UInt64(exp - 1))
-            guard !overflow else { continue }
-            let reward = spec.rewardAtBlock(penultimateBlock)
-            XCTAssertEqual(reward, 2,
-                           "Reward at penultimate halving should be 2 for exponent=\(exp), got \(reward)")
+        let rewards: [UInt64] = [4, 16, 256]
+        for reward in rewards {
+            let interval: UInt64 = 1000
+            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: reward, halvingInterval: interval)
+            let halvingsToGetTo2 = spec.totalHalvings - 2  // reward >> (totalHalvings - 2) == 2 when reward is power of 2
+            let penultimateBlock = interval * halvingsToGetTo2
+            let r = spec.rewardAtBlock(penultimateBlock)
+            XCTAssertEqual(r, 2, "Reward at penultimate halving should be 2 for initialReward=\(reward), got \(r)")
         }
     }
 
-    // Property: After totalHalvings halvings, reward is 1
-    // initialReward = 2^exp, after exp halvings: 2^exp >> exp = 1 (since exp < 64)
-    // But wait: 2^exp >> exp = 1 only if we haven't shifted past the bit.
-    // Actually: initialReward >> halvings where halvings = block/halvingInterval
-    // At block = exp * halvingInterval: halvings = exp, reward = 2^exp >> exp = 1
     func testRewardAfterFinalHalvingIsOne() {
-        for exp: UInt8 in [2, 4, 8, 16] {
-            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialRewardExponent: exp)
-            guard spec.isValid else { continue }
-            let (finalBlock, overflow) = spec.halvingInterval.multipliedReportingOverflow(by: UInt64(exp))
-            guard !overflow else { continue }
-            let reward = spec.rewardAtBlock(finalBlock)
-            XCTAssertEqual(reward, 1,
-                           "Reward at final halving should be 1 for exponent=\(exp), got \(reward)")
+        let rewards: [UInt64] = [4, 16, 256]
+        for reward in rewards {
+            let interval: UInt64 = 1000
+            let spec = ChainSpec(maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 1000, premine: 0, targetBlockTime: 1000, initialReward: reward, halvingInterval: interval)
+            let halvingsToGetTo1 = spec.totalHalvings - 1
+            let finalBlock = interval * halvingsToGetTo1
+            let r = spec.rewardAtBlock(finalBlock)
+            XCTAssertEqual(r, 1, "Reward at final halving should be 1 for initialReward=\(reward), got \(r)")
         }
     }
 

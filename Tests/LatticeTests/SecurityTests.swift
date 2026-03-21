@@ -21,7 +21,7 @@ private func spec() -> ChainSpec {
         maxBlockSize: 1_000_000,
         premine: 0,
         targetBlockTime: 1_000,
-        initialRewardExponent: 10,
+        initialReward: 1024, halvingInterval: 10_000,
         difficultyAdjustmentWindow: 5
     )
 }
@@ -259,7 +259,7 @@ final class BlockValidationAdversarialTests: XCTestCase {
             maxStateGrowth: 999,
             premine: 0,
             targetBlockTime: 999,
-            initialRewardExponent: 5
+            initialReward: 32, halvingInterval: 10_000
         )
         let wrongSpec = Block(
             previousBlock: HeaderImpl(node: g),
@@ -301,7 +301,7 @@ final class BlockValidationAdversarialTests: XCTestCase {
             maxBlockSize: 10,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         )
         let g = try await BlockBuilder.buildGenesis(
             spec: tinySpec, timestamp: 1_000_000, difficulty: UInt256(1000), fetcher: fetcher
@@ -322,7 +322,7 @@ final class FilterBypassTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10,
+            initialReward: 1024, halvingInterval: 10_000,
             transactionFilters: ["function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 100; }"]
         )
         let cheapTx = TransactionBody(
@@ -345,7 +345,7 @@ final class FilterBypassTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10,
+            initialReward: 1024, halvingInterval: 10_000,
             actionFilters: ["function actionFilter(aJSON) { var a = JSON.parse(aJSON); return a.key.indexOf('app/') === 0; }"]
         )
         let goodAction = Action(key: "app/users/1", oldValue: nil, newValue: "data")
@@ -357,12 +357,12 @@ final class FilterBypassTests: XCTestCase {
     func testFilterInheritanceCannotBeBypassedByChild() {
         let parentSpec = ChainSpec(
             maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
-            premine: 0, targetBlockTime: 1_000, initialRewardExponent: 10,
+            premine: 0, targetBlockTime: 1_000, initialReward: 1024, halvingInterval: 10_000,
             transactionFilters: ["function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 50; }"]
         )
         let childSpec = ChainSpec(
             maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
-            premine: 0, targetBlockTime: 1_000, initialRewardExponent: 10,
+            premine: 0, targetBlockTime: 1_000, initialReward: 1024, halvingInterval: 10_000,
             transactionFilters: []
         )
         let cheapTx = TransactionBody(
@@ -497,7 +497,7 @@ final class EconomicInvariantTests: XCTestCase {
     func testPremineOffsetShiftsHalving() {
         let premineSpec = ChainSpec(
             maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
-            premine: 100, targetBlockTime: 1_000, initialRewardExponent: 10
+            premine: 100, targetBlockTime: 1_000, initialReward: 1024, halvingInterval: 10_000
         )
         let halfInterval = premineSpec.halvingInterval
         let firstHalvingBlock = halfInterval - 100
@@ -675,7 +675,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
                 maxStateGrowth: 50_000,
                 premine: 0,
                 targetBlockTime: 2_000,
-                initialRewardExponent: 8
+                initialReward: 256, halvingInterval: 10_000
             ),
             timestamp: 1_000_000,
             difficulty: UInt256(500),
@@ -700,7 +700,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
         let level = ChainLevel(chain: ChainState.fromGenesis(block: g), children: [:])
         let childG = try await BlockBuilder.buildGenesis(
             spec: ChainSpec(directory: "x", maxNumberOfTransactionsPerBlock: 10, maxStateGrowth: 10_000,
-                           premine: 0, targetBlockTime: 1_000, initialRewardExponent: 5),
+                           premine: 0, targetBlockTime: 1_000, initialReward: 32, halvingInterval: 10_000),
             timestamp: 1_000_000, difficulty: UInt256(100), fetcher: fetcher
         )
 
@@ -709,7 +709,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
 
         let differentChildG = try await BlockBuilder.buildGenesis(
             spec: ChainSpec(directory: "x", maxNumberOfTransactionsPerBlock: 99, maxStateGrowth: 99_000,
-                           premine: 0, targetBlockTime: 999, initialRewardExponent: 9),
+                           premine: 0, targetBlockTime: 999, initialReward: 512, halvingInterval: 10_000),
             timestamp: 2_000_000, difficulty: UInt256(200), fetcher: fetcher
         )
         await level.registerChildChain(directory: "x", genesisBlock: differentChildG)

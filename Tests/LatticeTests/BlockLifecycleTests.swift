@@ -16,7 +16,7 @@ private func lifecycleSpec(_ dir: String = "Nexus") -> ChainSpec {
         maxBlockSize: 1_000_000,
         premine: 1000,
         targetBlockTime: 1_000,
-        initialRewardExponent: 10,
+        initialReward: 1024, halvingInterval: 10_000,
         difficultyAdjustmentWindow: 5
     )
 }
@@ -29,7 +29,7 @@ private func noPremine(_ dir: String = "Nexus") -> ChainSpec {
         maxBlockSize: 1_000_000,
         premine: 0,
         targetBlockTime: 1_000,
-        initialRewardExponent: 10,
+        initialReward: 1024, halvingInterval: 10_000,
         difficultyAdjustmentWindow: 5
     )
 }

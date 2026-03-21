@@ -17,7 +17,8 @@ func testSpec() -> ChainSpec {
         maxStateGrowth: 100_000,
         premine: 0,
         targetBlockTime: 1_000,
-        initialRewardExponent: 10
+        initialReward: 1024,
+        halvingInterval: 10_000
     )
 }
 
@@ -596,7 +597,8 @@ final class JavaScriptFilterTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10,
+            initialReward: 1024,
+            halvingInterval: 10_000,
             transactionFilters: ["function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 10; }"]
         )
         let lowFeeBody = TransactionBody(

@@ -72,48 +72,49 @@ final class ChainSpecFuzzTests: XCTestCase {
     func testRewardAtBlockNeverOverflows() {
         var rng = SeededRNG(seed: 42)
         for _ in 0..<1000 {
-            let exponent = UInt8.random(in: 1...63, using: &rng)
-            let maxPremine = (UInt64(1) << (64 - exponent)) - 1
-            let premine = UInt64.random(in: 0...min(maxPremine, UInt64.max / 2), using: &rng)
+            let reward = UInt64.random(in: 1...1_000_000, using: &rng)
+            let interval = UInt64.random(in: 1...1_000_000, using: &rng)
+            let premine = UInt64.random(in: 0...interval - 1, using: &rng)
             let spec = ChainSpec(
                 maxNumberOfTransactionsPerBlock: 100,
                 maxStateGrowth: 1000,
                 premine: premine,
                 targetBlockTime: 1000,
-                initialRewardExponent: exponent
+                initialReward: reward,
+                halvingInterval: interval
             )
             guard spec.isValid else { continue }
 
             let blockIndex = UInt64.random(in: 0...UInt64.max / 2, using: &rng)
-            let reward = spec.rewardAtBlock(blockIndex)
-            XCTAssertTrue(reward <= spec.initialReward,
-                          "Reward \(reward) exceeded initial \(spec.initialReward) at block \(blockIndex), exponent=\(exponent)")
+            let blockReward = spec.rewardAtBlock(blockIndex)
+            XCTAssertTrue(blockReward <= spec.initialReward,
+                          "Reward \(blockReward) exceeded initial \(spec.initialReward) at block \(blockIndex)")
         }
     }
 
     func testRewardMonotonicallyDecreases() {
         var rng = SeededRNG(seed: 101)
         for _ in 0..<200 {
-            let exponent = UInt8.random(in: 1...40, using: &rng)
+            let reward = UInt64.random(in: 1...1_000_000, using: &rng)
+            let interval = UInt64.random(in: 1...100_000, using: &rng)
             let spec = ChainSpec(
                 maxNumberOfTransactionsPerBlock: 100,
                 maxStateGrowth: 1000,
                 premine: 0,
                 targetBlockTime: 1000,
-                initialRewardExponent: exponent
+                initialReward: reward,
+                halvingInterval: interval
             )
             guard spec.isValid else { continue }
 
             var prevReward = spec.rewardAtBlock(0)
-            let halvingInterval = spec.halvingInterval
-            let maxHalvings = min(Int(exponent), 10)
-            for i in 1..<maxHalvings {
-                let (block, overflow) = halvingInterval.multipliedReportingOverflow(by: UInt64(i))
+            for i: UInt64 in 1..<10 {
+                let (block, overflow) = interval.multipliedReportingOverflow(by: i)
                 guard !overflow else { break }
-                let reward = spec.rewardAtBlock(block)
-                XCTAssertTrue(reward <= prevReward,
-                              "Reward increased from \(prevReward) to \(reward) at halving \(i)")
-                prevReward = reward
+                let r = spec.rewardAtBlock(block)
+                XCTAssertTrue(r <= prevReward,
+                              "Reward increased from \(prevReward) to \(r) at halving \(i)")
+                prevReward = r
             }
         }
     }
@@ -121,13 +122,15 @@ final class ChainSpecFuzzTests: XCTestCase {
     func testTotalRewardsConsistentWithIndividualSum() {
         var rng = SeededRNG(seed: 202)
         for _ in 0..<100 {
-            let exponent = UInt8.random(in: 1...30, using: &rng)
+            let reward = UInt64.random(in: 1...10_000, using: &rng)
+            let interval = UInt64.random(in: 100...10_000, using: &rng)
             let spec = ChainSpec(
                 maxNumberOfTransactionsPerBlock: 100,
                 maxStateGrowth: 1000,
                 premine: 0,
                 targetBlockTime: 1000,
-                initialRewardExponent: exponent
+                initialReward: reward,
+                halvingInterval: interval
             )
             guard spec.isValid else { continue }
 
@@ -137,7 +140,7 @@ final class ChainSpecFuzzTests: XCTestCase {
                 sum + spec.rewardAtBlock(idx)
             }
             XCTAssertEqual(totalFromMethod, totalFromIndividual,
-                           "Mismatch for exponent=\(exponent), blockCount=\(blockCount)")
+                           "Mismatch for reward=\(reward), interval=\(interval), blockCount=\(blockCount)")
         }
     }
 
@@ -171,7 +174,8 @@ final class ChainSpecFuzzTests: XCTestCase {
             let txCount = UInt64.random(in: 0...100, using: &rng)
             let stateGrowth = Int.random(in: 0...10000, using: &rng)
             let blockTime = UInt64.random(in: 0...600_000, using: &rng)
-            let exponent = UInt8.random(in: 0...64, using: &rng)
+            let reward = UInt64.random(in: 0...1_000_000, using: &rng)
+            let interval = UInt64.random(in: 0...1_000_000, using: &rng)
             let premine = UInt64.random(in: 0...UInt64.max / 2, using: &rng)
 
             let spec = ChainSpec(
@@ -179,15 +183,16 @@ final class ChainSpecFuzzTests: XCTestCase {
                 maxStateGrowth: stateGrowth,
                 premine: premine,
                 targetBlockTime: blockTime,
-                initialRewardExponent: exponent
+                initialReward: reward,
+                halvingInterval: interval
             )
 
             if spec.isValid {
                 XCTAssertGreaterThan(txCount, 0)
                 XCTAssertGreaterThan(stateGrowth, 0)
                 XCTAssertGreaterThan(blockTime, 0)
-                XCTAssertGreaterThan(exponent, 0)
-                XCTAssertLessThan(exponent, 64)
+                XCTAssertGreaterThan(reward, 0)
+                XCTAssertGreaterThan(interval, 0)
                 XCTAssertLessThan(premine, spec.halvingInterval)
             }
         }
@@ -196,21 +201,26 @@ final class ChainSpecFuzzTests: XCTestCase {
     func testPremineAmountConsistency() {
         var rng = SeededRNG(seed: 505)
         for _ in 0..<200 {
-            let exponent = UInt8.random(in: 1...30, using: &rng)
-            let maxPremine = (UInt64(1) << (64 - exponent)) - 1
-            let premine = UInt64.random(in: 0...min(maxPremine, 10_000_000), using: &rng)
+            let reward = UInt64.random(in: 1...10_000, using: &rng)
+            let interval = UInt64.random(in: 100...100_000, using: &rng)
+            let premine = UInt64.random(in: 0...min(interval - 1, 10_000), using: &rng)
 
             let spec = ChainSpec(
                 maxNumberOfTransactionsPerBlock: 100,
                 maxStateGrowth: 1000,
                 premine: premine,
                 targetBlockTime: 1000,
-                initialRewardExponent: exponent
+                initialReward: reward,
+                halvingInterval: interval
             )
             guard spec.isValid else { continue }
 
-            XCTAssertEqual(spec.premineAmount(), spec.initialReward * premine,
-                           "Premine mismatch for exponent=\(exponent), premine=\(premine)")
+            let premineTotal = spec.premineAmount()
+            let manualTotal = (0..<premine).reduce(UInt64(0)) { sum, idx in
+                sum + (reward >> (idx / interval))
+            }
+            XCTAssertEqual(premineTotal, manualTotal,
+                           "Premine mismatch for reward=\(reward), premine=\(premine)")
         }
     }
 }

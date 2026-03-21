@@ -9,7 +9,7 @@ private func f() -> StorableFetcher { StorableFetcher() }
 private func s(_ dir: String = "Nexus", premine: UInt64 = 1000) -> ChainSpec {
     ChainSpec(directory: dir, maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
               maxBlockSize: 1_000_000, premine: premine, targetBlockTime: 1_000,
-              initialRewardExponent: 10, difficultyAdjustmentWindow: 5)
+              initialReward: 1024, halvingInterval: 10_000, difficultyAdjustmentWindow: 5)
 }
 
 private func tx(_ body: TransactionBody, _ kp: (privateKey: String, publicKey: String)) -> Transaction {
@@ -392,7 +392,7 @@ final class TransactionFilterBlockTests: XCTestCase {
         let filteredSpec = ChainSpec(
             directory: "Nexus", maxNumberOfTransactionsPerBlock: 100,
             maxStateGrowth: 100_000, maxBlockSize: 1_000_000,
-            premine: 0, targetBlockTime: 1_000, initialRewardExponent: 10,
+            premine: 0, targetBlockTime: 1_000, initialReward: 1024, halvingInterval: 10_000,
             difficultyAdjustmentWindow: 5,
             transactionFilters: ["function transactionFilter(tx) { var t = JSON.parse(tx); return t.fee >= 10; }"]
         )

@@ -18,7 +18,7 @@ final class GenesisCeremonyTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         ))
 
         let result1 = try await GenesisCeremony.create(config: config, fetcher: fetcher)
@@ -40,7 +40,7 @@ final class GenesisCeremonyTests: XCTestCase {
                 maxStateGrowth: 100_000,
                 premine: 0,
                 targetBlockTime: 1_000,
-                initialRewardExponent: 10
+                initialReward: 1024, halvingInterval: 10_000
             ),
             timestamp: 42,
             difficulty: UInt256(1000)
@@ -57,7 +57,7 @@ final class GenesisCeremonyTests: XCTestCase {
                 maxStateGrowth: 100_000,
                 premine: 0,
                 targetBlockTime: 1_000,
-                initialRewardExponent: 10
+                initialReward: 1024, halvingInterval: 10_000
             ),
             timestamp: 42,
             difficulty: UInt256(1000)
@@ -77,7 +77,7 @@ final class GenesisCeremonyTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         ))
         let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
 
@@ -115,7 +115,7 @@ final class BlockReceptionTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         ))
 
         let storableFetcher = StorableFetcher()
@@ -151,7 +151,7 @@ final class BlockReceptionTests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         ))
         let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
 
@@ -249,7 +249,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         )
         let genesisConfig = GenesisConfig.standard(spec: spec)
         let genesis = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)
@@ -291,7 +291,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         )
         let genesisConfig = GenesisConfig.standard(spec: spec)
 
@@ -328,7 +328,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
             maxStateGrowth: 100_000,
             premine: 0,
             targetBlockTime: 1_000,
-            initialRewardExponent: 10
+            initialReward: 1024, halvingInterval: 10_000
         )
         let genesisConfig = GenesisConfig.standard(spec: spec)
         let nodeA = try await GenesisCeremony.create(config: genesisConfig, fetcher: fetcher)

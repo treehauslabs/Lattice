@@ -18,8 +18,9 @@ let spec = ChainSpec(
     maxNumberOfTransactionsPerBlock: 100,
     maxStateGrowth: 100_000,
     premine: 0,
-    targetBlockTime: 1_000,
-    initialRewardExponent: 10
+    targetBlockTime: 10_000,
+    initialReward: 1_000_000_000,
+    halvingInterval: 15_768_000
 )
 
 print("Chain spec: \(spec.directory)")
