@@ -3,14 +3,8 @@ import XCTest
 import UInt256
 import cashew
 import Foundation
-import Acorn
 
-private struct LocalFetcher: Fetcher {
-    func fetch(rawCid: String) async throws -> Data {
-        throw NSError(domain: "LocalFetcher", code: 1)
-    }
-}
-private let fetcher = LocalFetcher()
+private let fetcher = ThrowingFetcher()
 
 // MARK: - Genesis Ceremony Tests
 
@@ -109,17 +103,6 @@ final class GenesisCeremonyTests: XCTestCase {
     }
 }
 
-actor InMemoryTestWorker: AcornCASWorker {
-    var near: (any AcornCASWorker)?
-    var far: (any AcornCASWorker)?
-    var timeout: Duration? { nil }
-    private var store: [ContentIdentifier: Data] = [:]
-
-    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
-    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
-    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
-}
-
 // MARK: - Block Validation on Receipt Tests
 
 @MainActor
@@ -135,12 +118,11 @@ final class BlockReceptionTests: XCTestCase {
             initialRewardExponent: 10
         ))
 
-        let worker = InMemoryTestWorker()
-        let acornFetcher = AcornFetcher(worker: worker)
+        let storableFetcher = StorableFetcher()
 
         let result = try await GenesisCeremony.create(config: config, fetcher: fetcher)
         if let data = result.block.toData() {
-            await acornFetcher.store(rawCid: result.blockHash, data: data)
+            await storableFetcher.store(rawCid: result.blockHash, data: data)
         }
 
         let block1 = try await BlockBuilder.buildBlock(
@@ -153,9 +135,9 @@ final class BlockReceptionTests: XCTestCase {
             return
         }
 
-        await acornFetcher.store(rawCid: block1Hash, data: block1Data)
+        await storableFetcher.store(rawCid: block1Hash, data: block1Data)
 
-        let fetchedData = try await acornFetcher.fetch(rawCid: block1Hash)
+        let fetchedData = try await storableFetcher.fetch(rawCid: block1Hash)
         XCTAssertEqual(fetchedData, block1Data)
 
         let resolvedBlock = Block(data: fetchedData)

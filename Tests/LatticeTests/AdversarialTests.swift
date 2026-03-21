@@ -3,19 +3,8 @@ import XCTest
 import UInt256
 import cashew
 import Foundation
-import Acorn
 
-private actor AdversarialWorker: AcornCASWorker {
-    var near: (any AcornCASWorker)?
-    var far: (any AcornCASWorker)?
-    var timeout: Duration? { nil }
-    private var store: [ContentIdentifier: Data] = [:]
-    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
-    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
-    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
-}
-
-private func makeFetcher() -> AcornFetcher { AcornFetcher(worker: AdversarialWorker()) }
+private func makeFetcher() -> StorableFetcher { StorableFetcher() }
 
 private func spec(_ dir: String = "Nexus", premine: UInt64 = 1000) -> ChainSpec {
     ChainSpec(directory: dir, maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
@@ -37,7 +26,7 @@ private func t() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
 private func genesisWithPremine(
     spec s: ChainSpec, owner: (privateKey: String, publicKey: String),
-    fetcher: AcornFetcher, baseTime: Int64
+    fetcher: StorableFetcher, baseTime: Int64
 ) async throws -> Block {
     let ownerAddr = cid(owner.publicKey)
     let body = TransactionBody(

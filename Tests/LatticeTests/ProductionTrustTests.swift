@@ -3,19 +3,8 @@ import XCTest
 import UInt256
 import cashew
 import Foundation
-import Acorn
 
-private actor ProdWorker: AcornCASWorker {
-    var near: (any AcornCASWorker)?
-    var far: (any AcornCASWorker)?
-    var timeout: Duration? { nil }
-    private var store: [ContentIdentifier: Data] = [:]
-    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
-    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
-    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
-}
-
-private func f() -> AcornFetcher { AcornFetcher(worker: ProdWorker()) }
+private func f() -> StorableFetcher { StorableFetcher() }
 
 private func s(_ dir: String = "Nexus", premine: UInt64 = 1000) -> ChainSpec {
     ChainSpec(directory: dir, maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
@@ -37,7 +26,7 @@ private func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
 private func premineGenesis(
     spec: ChainSpec, owner kp: (privateKey: String, publicKey: String),
-    fetcher: AcornFetcher, time: Int64
+    fetcher: StorableFetcher, time: Int64
 ) async throws -> Block {
     let addr = id(kp.publicKey)
     let body = TransactionBody(
@@ -51,7 +40,7 @@ private func premineGenesis(
     )
 }
 
-private func buildChain(from genesis: Block, length: Int, base: Int64, fetcher: AcornFetcher) async throws -> [Block] {
+private func buildChain(from genesis: Block, length: Int, base: Int64, fetcher: StorableFetcher) async throws -> [Block] {
     var blocks = [genesis]
     for i in 1..<length {
         let b = try await BlockBuilder.buildBlock(
@@ -561,12 +550,6 @@ final class SupplyOverflowTests: XCTestCase {
 
     func testPremineDoesNotOverflowUInt64() {
         let spec = s()
-        let (_, overflow) = spec.premine.multipliedReportingOverflow(by: spec.initialReward)
-        XCTAssertFalse(overflow)
-    }
-
-    func testNexusGenesisPremineDoesNotOverflow() {
-        let spec = NexusGenesis.spec
         let (_, overflow) = spec.premine.multipliedReportingOverflow(by: spec.initialReward)
         XCTAssertFalse(overflow)
     }

@@ -3,21 +3,9 @@ import XCTest
 import UInt256
 import cashew
 import Foundation
-import Acorn
 
-private actor TestCASWorker: AcornCASWorker {
-    var near: (any AcornCASWorker)?
-    var far: (any AcornCASWorker)?
-    var timeout: Duration? { nil }
-    private var store: [ContentIdentifier: Data] = [:]
-
-    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
-    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
-    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
-}
-
-private func makeFetcher() -> AcornFetcher {
-    AcornFetcher(worker: TestCASWorker())
+private func makeFetcher() -> StorableFetcher {
+    StorableFetcher()
 }
 
 private func lifecycleSpec(_ dir: String = "Nexus") -> ChainSpec {

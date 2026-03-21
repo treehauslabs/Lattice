@@ -3,21 +3,9 @@ import XCTest
 import UInt256
 import cashew
 import Foundation
-import Acorn
 
-// Helpers shared across trust test suites
 
-private actor TrustWorker: AcornCASWorker {
-    var near: (any AcornCASWorker)?
-    var far: (any AcornCASWorker)?
-    var timeout: Duration? { nil }
-    private var store: [ContentIdentifier: Data] = [:]
-    func has(cid: ContentIdentifier) -> Bool { store[cid] != nil }
-    func getLocal(cid: ContentIdentifier) async -> Data? { store[cid] }
-    func storeLocal(cid: ContentIdentifier, data: Data) async { store[cid] = data }
-}
-
-private func f() -> AcornFetcher { AcornFetcher(worker: TrustWorker()) }
+private func f() -> StorableFetcher { StorableFetcher() }
 
 private func s(_ dir: String = "Nexus", premine: UInt64 = 1000) -> ChainSpec {
     ChainSpec(directory: dir, maxNumberOfTransactionsPerBlock: 100, maxStateGrowth: 100_000,
@@ -39,7 +27,7 @@ private func now() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
 private func premineGenesis(
     spec: ChainSpec, owner: (privateKey: String, publicKey: String),
-    fetcher: AcornFetcher, time: Int64
+    fetcher: StorableFetcher, time: Int64
 ) async throws -> Block {
     let addr = id(owner.publicKey)
     let body = TransactionBody(
