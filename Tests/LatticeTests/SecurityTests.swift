@@ -685,7 +685,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
         let childrenBefore = await level.children
         XCTAssertTrue(childrenBefore.isEmpty)
 
-        await level.registerChildChain(directory: "child1", genesisBlock: childGenesis)
+        await level.subscribe(to: "child1", genesisBlock: childGenesis)
 
         let childrenAfter = await level.children
         XCTAssertEqual(childrenAfter.count, 1)
@@ -704,7 +704,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
             timestamp: 1_000_000, difficulty: UInt256(100), fetcher: fetcher
         )
 
-        await level.registerChildChain(directory: "x", genesisBlock: childG)
+        await level.subscribe(to: "x", genesisBlock: childG)
         let tipAfterFirst = await level.children["x"]!.chain.getMainChainTip()
 
         let differentChildG = try await BlockBuilder.buildGenesis(
@@ -712,7 +712,7 @@ final class DynamicChainDiscoveryTests: XCTestCase {
                            premine: 0, targetBlockTime: 999, initialReward: 512, halvingInterval: 10_000),
             timestamp: 2_000_000, difficulty: UInt256(200), fetcher: fetcher
         )
-        await level.registerChildChain(directory: "x", genesisBlock: differentChildG)
+        await level.subscribe(to: "x", genesisBlock: differentChildG)
         let tipAfterSecond = await level.children["x"]!.chain.getMainChainTip()
 
         XCTAssertEqual(tipAfterFirst, tipAfterSecond, "Second registration should be ignored")

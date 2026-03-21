@@ -8,27 +8,13 @@ public protocol LatticeDelegate: AnyObject, Sendable {
 public actor Lattice {
     public let nexus: ChainLevel
     public weak var delegate: LatticeDelegate?
-    private var subscribedChains: Set<String>
 
-    public init(nexus: ChainLevel, subscribedChains: Set<String> = []) {
+    public init(nexus: ChainLevel) {
         self.nexus = nexus
-        self.subscribedChains = subscribedChains
     }
 
     public func setDelegate(_ delegate: LatticeDelegate) {
         self.delegate = delegate
-    }
-
-    public func subscribe(to directory: String) {
-        subscribedChains.insert(directory)
-    }
-
-    public func unsubscribe(from directory: String) {
-        subscribedChains.remove(directory)
-    }
-
-    public func getSubscribedChains() -> Set<String> {
-        subscribedChains
     }
 
     public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
@@ -50,8 +36,7 @@ public actor Lattice {
                 let newChildren = await nexus.extractAndProcessChildBlocks(
                     parentBlock: resolvedBlock,
                     parentBlockHeader: blockHeader,
-                    fetcher: fetcher,
-                    subscribedChains: subscribedChains
+                    fetcher: fetcher
                 )
                 for dir in newChildren {
                     await delegate?.lattice(self, didDiscoverChildChain: dir)
@@ -82,12 +67,9 @@ public actor ChainLevel {
         self.children = children
     }
 
-    // MARK: - Dynamic Chain Discovery
-    //
-    // When a GenesisAction creates a new child chain, this method registers
-    // it in the hierarchy so it can receive merged-mined blocks going forward.
+    // MARK: - Child Chain Management
 
-    public func registerChildChain(directory: String, genesisBlock: Block) {
+    public func subscribe(to directory: String, genesisBlock: Block) {
         guard children[directory] == nil else { return }
         let childChain = ChainState.fromGenesis(block: genesisBlock)
         let childLevel = ChainLevel(chain: childChain, children: [:])
@@ -104,34 +86,17 @@ public actor ChainLevel {
     }
 
     // MARK: - Child Block Extraction (Merged Mining)
-    //
-    // Child blocks embedded in a parent block via merged mining are
-    // OPTIONAL. An invalid child block does not affect:
-    //   - The parent block's validity
-    //   - Other child chains' blocks in the same parent
-    //   - Grandchild blocks under a different valid child
-    //
-    // Each child block is validated independently against its chain's
-    // rules. Invalid blocks are silently skipped. This prevents child
-    // chain issues from bottlenecking the nexus and ensures a single
-    // malformed child block can't poison the entire merged-mined set.
 
     @discardableResult
     func extractAndProcessChildBlocks(
         parentBlock: Block,
         parentBlockHeader: BlockHeader,
         fetcher: Fetcher,
-        subscribedChains: Set<String> = [],
         ancestorSpecs: [ChainSpec] = []
     ) async -> [String] {
         guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return [] }
         guard let allChildKeys = try? childBlocksNode.allKeys() else { return [] }
         if allChildKeys.isEmpty { return [] }
-
-        let relevantKeys = subscribedChains.isEmpty
-            ? Set(allChildKeys)
-            : Set(allChildKeys).intersection(subscribedChains)
-        if relevantKeys.isEmpty { return [] }
 
         let parentBlockIndex = await chain.getHighestBlockIndex()
 
@@ -141,23 +106,23 @@ public actor ChainLevel {
         }
 
         var newChildDirectories: [String] = []
-        for directory in relevantKeys {
+        for directory in allChildKeys {
             if children[directory] == nil {
                 guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
                 if let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node,
                    childBlock.index == 0, childBlock.previousBlock == nil {
-                    registerChildChain(directory: directory, genesisBlock: childBlock)
+                    subscribe(to: directory, genesisBlock: childBlock)
                     newChildDirectories.append(directory)
                 }
             }
         }
 
         await withTaskGroup(of: Void.self) { group in
-            for directory in relevantKeys {
+            for directory in allChildKeys {
                 guard let childLevel = children[directory] else { continue }
                 guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
 
-                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs, subscribedChains] in
+                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs] in
                     guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else { return }
 
                     let isValid = await childLevel.validateChildBlock(
@@ -181,7 +146,6 @@ public actor ChainLevel {
                         parentBlock: childBlock,
                         parentBlockHeader: childBlockHeader,
                         fetcher: fetcher,
-                        subscribedChains: subscribedChains,
                         ancestorSpecs: allAncestorSpecs
                     )
                 }
@@ -191,10 +155,6 @@ public actor ChainLevel {
     }
 
     // MARK: - Child Block Validation
-    //
-    // Validates a child block independently before accepting it into
-    // the child chain. Returns false if the block is invalid -- the
-    // caller skips it without affecting the parent block.
 
     func validateChildBlock(
         childBlock: Block,
@@ -242,9 +202,6 @@ public actor ChainLevel {
     }
 
     // MARK: - Non-Chain Block Dispatch (Merged Mining)
-    //
-    // When a block doesn't meet the current chain's difficulty target,
-    // offer it to child chains whose difficulty targets it may meet.
 
     func processNonChainBlockForChildren(
         blockHash: UInt256,
