@@ -43,18 +43,6 @@ public struct Transaction {
         return true
     }
 
-    func validateTransactionForNexus(fetcher: Fetcher) async throws -> Bool {
-        if !signaturesAreValid() { return false }
-        let resolvedBody = try await body.resolve(fetcher: fetcher)
-        if !signaturesMatchSigners() { return false }
-        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
-        if !bodyNode.accountActionsAreValid() { return false }
-        if !bodyNode.swapActionsAreValid() { return false }
-        if !bodyNode.settleActionsAreValid() { return false }
-        if !bodyNode.swapClaimActionsAreValid() { return false }
-        return true
-    }
-
     func validateTransactionForNexus(directory: String, homestead: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
         if !signaturesAreValid() { return false }
         let resolvedBody = try await body.resolve(fetcher: fetcher)

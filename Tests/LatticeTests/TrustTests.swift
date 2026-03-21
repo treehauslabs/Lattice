@@ -140,22 +140,31 @@ final class CrossChainRoundtripTests: XCTestCase {
         XCTAssertEqual(finalBalance, childPremine + 2 * childReward)
     }
 
-    func testSwapRefund() async throws {
+    func testSwapRefundAfterTimelock() async throws {
         let fetcher = f()
         let base = now() - 30_000
         let alice = CryptoUtils.generateKeyPair()
         let aliceAddr = id(alice.publicKey)
 
         let childSpec = s("Child")
+        let nexusSpec = s("Nexus", premine: 0)
         let childPremine = childSpec.premineAmount()
         let childReward = childSpec.initialReward
         let swapAmount: UInt64 = 1000
+        let timelock: UInt64 = 1
 
         let childGenesis = try await premineGenesis(spec: childSpec, owner: alice, fetcher: fetcher, time: base)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
+        )
 
-        let childSwap = SwapAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000)
+        let childSwap = SwapAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock)
 
-        // Swap
+        let t1 = base + 1000
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, timestamp: t1,
+            difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
         let swapBody = TransactionBody(
             accountActions: [
                 AccountAction(owner: aliceAddr, oldBalance: childPremine, newBalance: childPremine - swapAmount + childReward)
@@ -167,18 +176,23 @@ final class CrossChainRoundtripTests: XCTestCase {
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis, transactions: [tx(swapBody, alice)],
-            timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
         let balanceAfterSwap = childPremine - swapAmount + childReward
 
-        // Refund (isRefund: true, no settlement needed)
+        let t2 = base + 2000
+        let nexusBlock2 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock1, timestamp: t2,
+            difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
         let refundBody = TransactionBody(
             accountActions: [
                 AccountAction(owner: aliceAddr, oldBalance: balanceAfterSwap, newBalance: balanceAfterSwap + swapAmount + childReward)
             ],
             actions: [], swapActions: [],
             swapClaimActions: [
-                SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000, isRefund: true)
+                SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock, isRefund: true)
             ],
             genesisActions: [], peerActions: [], settleActions: [],
             signers: [aliceAddr], fee: 0, nonce: 2
@@ -186,9 +200,357 @@ final class CrossChainRoundtripTests: XCTestCase {
         let childBlock2 = try await BlockBuilder.buildBlock(
             previous: childBlock1,
             transactions: [tx(refundBody, alice)],
-            timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+            parentChainBlock: nexusBlock2,
+            timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        XCTAssertEqual(childBlock2.index, 2)
+        let valid = try await childBlock2.validate(
+            nexusHash: childBlock2.getDifficultyHash(),
+            parentChainBlock: nexusBlock2,
+            fetcher: fetcher
+        )
+        XCTAssertTrue(valid, "Refund after timelock should succeed (blockIndex 2 > timelock 1)")
+    }
+
+    func testPrematureRefundRejected() async throws {
+        let fetcher = f()
+        let base = now() - 30_000
+        let alice = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+
+        let childSpec = s("Child")
+        let nexusSpec = s("Nexus", premine: 0)
+        let childPremine = childSpec.premineAmount()
+        let childReward = childSpec.initialReward
+        let swapAmount: UInt64 = 1000
+        let timelock: UInt64 = 9999
+
+        let childGenesis = try await premineGenesis(spec: childSpec, owner: alice, fetcher: fetcher, time: base)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let childSwap = SwapAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock)
+
+        let t1 = base + 1000
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, timestamp: t1,
+            difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let swapBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: aliceAddr, oldBalance: childPremine, newBalance: childPremine - swapAmount + childReward)
+            ],
+            actions: [],
+            swapActions: [childSwap],
+            swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [tx(swapBody, alice)],
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let balanceAfterSwap = childPremine - swapAmount + childReward
+
+        let t2 = base + 2000
+        let nexusBlock2 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock1, timestamp: t2,
+            difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let refundBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: aliceAddr, oldBalance: balanceAfterSwap, newBalance: balanceAfterSwap + swapAmount + childReward)
+            ],
+            actions: [], swapActions: [],
+            swapClaimActions: [
+                SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock, isRefund: true)
+            ],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 2
+        )
+        let childBlock2 = try await BlockBuilder.buildBlock(
+            previous: childBlock1,
+            transactions: [tx(refundBody, alice)],
+            parentChainBlock: nexusBlock2,
+            timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let valid = try await childBlock2.validate(
+            nexusHash: childBlock2.getDifficultyHash(),
+            parentChainBlock: nexusBlock2,
+            fetcher: fetcher
+        )
+        XCTAssertFalse(valid, "Refund before timelock expires must be rejected (blockIndex 2 <= timelock 9999)")
+    }
+
+    func testTwoPartySwapEndToEnd() async throws {
+        let fetcher = f()
+        let base = now() - 40_000
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+
+        let childASpec = s("ChildA")
+        let childBSpec = s("ChildB")
+        let nexusSpec = s("Nexus", premine: 0)
+        let premineA = childASpec.premineAmount()
+        let premineB = childBSpec.premineAmount()
+        let rewardA = childASpec.initialReward
+        let rewardB = childBSpec.initialReward
+        let nexusReward = nexusSpec.rewardAtBlock(0)
+
+        let childAGenesis = try await premineGenesis(spec: childASpec, owner: alice, fetcher: fetcher, time: base)
+        let childBGenesis = try await premineGenesis(spec: childBSpec, owner: bob, fetcher: fetcher, time: base)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let aliceSwapAmount: UInt64 = 300
+        let bobSwapAmount: UInt64 = 200
+
+        let aliceSwap = SwapAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: aliceSwapAmount, timelock: 1000)
+        let bobSwap = SwapAction(nonce: 1, sender: bobAddr, recipient: aliceAddr, amount: bobSwapAmount, timelock: 500)
+
+        let t1 = base + 1000
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, timestamp: t1,
+            difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+
+        let aliceSwapBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, oldBalance: premineA, newBalance: premineA - aliceSwapAmount + rewardA)],
+            actions: [], swapActions: [aliceSwap],
+            swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let childABlock1 = try await BlockBuilder.buildBlock(
+            previous: childAGenesis, transactions: [tx(aliceSwapBody, alice)],
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+
+        let bobSwapBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, oldBalance: premineB, newBalance: premineB - bobSwapAmount + rewardB)],
+            actions: [], swapActions: [bobSwap],
+            swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
+            signers: [bobAddr], fee: 0, nonce: 1
+        )
+        let childBBlock1 = try await BlockBuilder.buildBlock(
+            previous: childBGenesis, transactions: [tx(bobSwapBody, bob)],
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+
+        let t2 = base + 2000
+        let aliceSwapKey = SwapKey(swapAction: aliceSwap).description
+        let bobSwapKey = SwapKey(swapAction: bobSwap).description
+        let settleBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, oldBalance: 0, newBalance: nexusSpec.rewardAtBlock(2))],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
+            settleActions: [SettleAction(
+                nonce: 1, senderA: aliceAddr, senderB: bobAddr,
+                swapKeyA: aliceSwapKey, directoryA: "ChildA",
+                swapKeyB: bobSwapKey, directoryB: "ChildB"
+            )],
+            signers: [aliceAddr, bobAddr], fee: 0, nonce: 0
+        )
+        let settleHeader = HeaderImpl<TransactionBody>(node: settleBody)
+        let sigA = CryptoUtils.sign(message: settleHeader.rawCID, privateKeyHex: alice.privateKey)!
+        let sigB = CryptoUtils.sign(message: settleHeader.rawCID, privateKeyHex: bob.privateKey)!
+        let settleTx = Transaction(signatures: [alice.publicKey: sigA, bob.publicKey: sigB], body: settleHeader)
+
+        let nexusBlock2 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock1, transactions: [settleTx],
+            timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let nexusValid = try await nexusBlock2.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(nexusValid, "Settlement co-signed by both parties should be valid")
+
+        let t3 = base + 3000
+        let nexusBlock3 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock2, timestamp: t3,
+            difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
+        )
+
+        let bobClaimOnA = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, oldBalance: 0, newBalance: aliceSwapAmount + rewardA)],
+            actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: aliceSwapAmount, timelock: 1000, isRefund: false)],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        let childABlock2 = try await BlockBuilder.buildBlock(
+            previous: childABlock1, transactions: [tx(bobClaimOnA, bob)],
+            parentChainBlock: nexusBlock3,
+            timestamp: t3, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let childAValid = try await childABlock2.validate(
+            nexusHash: childABlock2.getDifficultyHash(),
+            parentChainBlock: nexusBlock3,
+            fetcher: fetcher
+        )
+        XCTAssertTrue(childAValid, "Bob claiming Alice's swap on ChildA should be valid")
+
+        let aliceClaimOnB = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, oldBalance: 0, newBalance: bobSwapAmount + rewardB)],
+            actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: bobAddr, recipient: aliceAddr, amount: bobSwapAmount, timelock: 500, isRefund: false)],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 0
+        )
+        let childBBlock2 = try await BlockBuilder.buildBlock(
+            previous: childBBlock1, transactions: [tx(aliceClaimOnB, alice)],
+            parentChainBlock: nexusBlock3,
+            timestamp: t3, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let childBValid = try await childBBlock2.validate(
+            nexusHash: childBBlock2.getDifficultyHash(),
+            parentChainBlock: nexusBlock3,
+            fetcher: fetcher
+        )
+        XCTAssertTrue(childBValid, "Alice claiming Bob's swap on ChildB should be valid")
+    }
+}
+
+// ============================================================================
+// MARK: - Swap Authorization Negative Tests
+// ============================================================================
+
+@MainActor
+final class SwapAuthorizationTests: XCTestCase {
+
+    func testClaimByNonRecipientRejected() {
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let eve = CryptoUtils.generateKeyPair()
+        let eveAddr = id(eve.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: 100, timelock: 1000, isRefund: false)],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [eveAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.swapClaimActionsAreValid(), "Claim signed by non-recipient should be rejected")
+    }
+
+    func testClaimByRecipientAccepted() {
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: 100, timelock: 1000, isRefund: false)],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        XCTAssertTrue(body.swapClaimActionsAreValid(), "Claim signed by recipient should be accepted")
+    }
+
+    func testRefundByNonSenderRejected() {
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: 100, timelock: 1000, isRefund: true)],
+            genesisActions: [], peerActions: [], settleActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.swapClaimActionsAreValid(), "Refund signed by non-sender should be rejected")
+    }
+
+    func testSettleWithMismatchedSenderRejected() {
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let eve = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let eveAddr = id(eve.publicKey)
+
+        let swapKeyA = SwapKey(swapAction: SwapAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: 100, timelock: 1000)).description
+        let swapKeyB = SwapKey(swapAction: SwapAction(nonce: 1, sender: bobAddr, recipient: aliceAddr, amount: 50, timelock: 500)).description
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [],
+            settleActions: [SettleAction(nonce: 1, senderA: eveAddr, senderB: bobAddr, swapKeyA: swapKeyA, directoryA: "A", swapKeyB: swapKeyB, directoryB: "B")],
+            signers: [eveAddr, bobAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.settleActionsAreValid(), "Settle with senderA not matching swapKeyA's sender should be rejected")
+    }
+
+    func testSettleWithWrongCrossMatchRejected() {
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let carol = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let carolAddr = id(carol.publicKey)
+
+        let swapKeyA = SwapKey(swapAction: SwapAction(nonce: 1, sender: aliceAddr, recipient: carolAddr, amount: 100, timelock: 1000)).description
+        let swapKeyB = SwapKey(swapAction: SwapAction(nonce: 1, sender: bobAddr, recipient: aliceAddr, amount: 50, timelock: 500)).description
+
+        let body = TransactionBody(
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [],
+            settleActions: [SettleAction(nonce: 1, senderA: aliceAddr, senderB: bobAddr, swapKeyA: swapKeyA, directoryA: "A", swapKeyB: swapKeyB, directoryB: "B")],
+            signers: [aliceAddr, bobAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.settleActionsAreValid(), "Settle where swapKeyA.recipient != senderB should be rejected")
+    }
+
+    func testSettleAndClaimInSameBlockFails() async throws {
+        let fetcher = f()
+        let base = now() - 30_000
+        let alice = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+
+        let nexusSpec = s("Nexus")
+        let premine = nexusSpec.premineAmount()
+        let reward = nexusSpec.initialReward
+        let nexusGenesis = try await premineGenesis(spec: nexusSpec, owner: alice, fetcher: fetcher, time: base)
+
+        let swapAmount: UInt64 = 100
+        let swap = SwapAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000)
+        let swapKey = SwapKey(swapAction: swap).description
+
+        let swapBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, oldBalance: premine, newBalance: premine - swapAmount + reward)],
+            actions: [], swapActions: [swap],
+            swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [tx(swapBody, alice)],
+            timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let balAfterSwap = premine - swapAmount + reward
+
+        let settleAndClaimBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, oldBalance: balAfterSwap, newBalance: balAfterSwap + swapAmount + reward)],
+            actions: [], swapActions: [],
+            swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000, isRefund: false)],
+            genesisActions: [], peerActions: [],
+            settleActions: [SettleAction(nonce: 1, senderA: aliceAddr, senderB: aliceAddr, swapKeyA: swapKey, directoryA: "Nexus", swapKeyB: swapKey, directoryB: "Nexus")],
+            signers: [aliceAddr], fee: 0, nonce: 2
+        )
+        do {
+            let nexusBlock2 = try await BlockBuilder.buildBlock(
+                previous: nexusBlock1, transactions: [tx(settleAndClaimBody, alice)],
+                timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+            )
+            let valid = try await nexusBlock2.validateNexus(fetcher: fetcher)
+            XCTAssertFalse(valid, "Settle and claim in same block should fail — settlement not yet in homestead")
+        } catch {
+            // Claim proof or build fails because settle is not yet in homestead.settleState
+        }
     }
 }
 

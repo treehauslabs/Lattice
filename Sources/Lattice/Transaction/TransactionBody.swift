@@ -45,6 +45,8 @@ public struct TransactionBody: Scalar {
             guard let parsedKeyB = SwapKey(settleAction.swapKeyB) else { return false }
             if parsedKeyA.sender != settleAction.senderA { return false }
             if parsedKeyB.sender != settleAction.senderB { return false }
+            if parsedKeyA.recipient != settleAction.senderB { return false }
+            if parsedKeyB.recipient != settleAction.senderA { return false }
         }
         return true
     }

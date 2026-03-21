@@ -101,10 +101,10 @@ public extension Block {
         if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
         let txs = txHeaders.map { $0.node! }
         async let homesteadStateFuture = homestead.resolve(fetcher: fetcher)
-        async let parentChainHomesteadStateFuture = parentChainBlock.parentHomestead.resolve(fetcher: fetcher)
-        let (homesteadState, parentChainHomesteadState) = try await (homesteadStateFuture, parentChainHomesteadStateFuture)
+        async let parentStateFuture = parentHomestead.resolve(fetcher: fetcher)
+        let (homesteadState, parentStateResolved) = try await (homesteadStateFuture, parentStateFuture)
         guard let homesteadStateNode = homesteadState.node else { throw ValidationErrors.homesteadNotResolved }
-        guard let parentHomesteadStateNode = parentChainHomesteadState.node else { throw ValidationErrors.homesteadNotResolved }
+        guard let parentHomesteadStateNode = parentStateResolved.node else { throw ValidationErrors.homesteadNotResolved }
         if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, blockIndex: self.index, fetcher: fetcher) }).contains(false) { return false }
         let transactionBodiesMaybe = txs.map { $0.body.node }
         if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
