@@ -77,40 +77,40 @@ public struct Block: Hashable {
     }
     
     
-    public func getAllAccountActions(transactionBodies: [TransactionBody]) -> [AccountAction] {
-        return transactionBodies.map { $0.accountActions }.reduce([], +)
+    public static func getAllAccountActions(_ transactionBodies: [TransactionBody]) -> [AccountAction] {
+        transactionBodies.flatMap { $0.accountActions }
     }
-    
-    public func getAllDepositActions(transactionBodies: [TransactionBody]) -> [DepositAction] {
-        return transactionBodies.map { $0.depositActions }.reduce([], +)
+
+    public static func getAllDepositActions(_ transactionBodies: [TransactionBody]) -> [DepositAction] {
+        transactionBodies.flatMap { $0.depositActions }
     }
-    
-    public func getAllWithdrawalActions(transactionBodies: [TransactionBody]) -> [WithdrawalAction] {
-        return transactionBodies.map { $0.withdrawalActions }.reduce([], +)
+
+    public static func getAllWithdrawalActions(_ transactionBodies: [TransactionBody]) -> [WithdrawalAction] {
+        transactionBodies.flatMap { $0.withdrawalActions }
     }
-    
-    public func getAllActions(transactionBodies: [TransactionBody]) -> [Action] {
-        return transactionBodies.map { $0.actions }.reduce([], +)
+
+    public static func getAllActions(_ transactionBodies: [TransactionBody]) -> [Action] {
+        transactionBodies.flatMap { $0.actions }
     }
-    
-    public func getAllGenesisActions(transactionBodies: [TransactionBody]) -> [GenesisAction] {
-        return transactionBodies.map { $0.genesisActions }.reduce([], +)
+
+    public static func getAllGenesisActions(_ transactionBodies: [TransactionBody]) -> [GenesisAction] {
+        transactionBodies.flatMap { $0.genesisActions }
     }
-    
-    public func getAllPeerActions(transactionBodies: [TransactionBody]) -> [PeerAction] {
-        return transactionBodies.map { $0.peerActions }.reduce([], +)
+
+    public static func getAllPeerActions(_ transactionBodies: [TransactionBody]) -> [PeerAction] {
+        transactionBodies.flatMap { $0.peerActions }
     }
-    
-    public func getAllReceiptActions(transactionBodies: [TransactionBody]) -> [ReceiptAction] {
-        return transactionBodies.map { $0.receiptActions }.reduce([], +)
+
+    public static func getAllReceiptActions(_ transactionBodies: [TransactionBody]) -> [ReceiptAction] {
+        transactionBodies.flatMap { $0.receiptActions }
     }
-    
-    public func getTotalDeposited(allDepositActions: [DepositAction]) -> UInt64 {
-        return allDepositActions.map { $0.amountDeposited }.reduce(0, +)
+
+    public static func getTotalDeposited(_ allDepositActions: [DepositAction]) -> UInt64 {
+        allDepositActions.reduce(0) { $0 + $1.amountDeposited }
     }
-    
-    public func getTotalWithdrawn(allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
-        return allWithdrawalActions.map { $0.amountWithdrawn }.reduce(0, +)
+
+    public static func getTotalWithdrawn(_ allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
+        allWithdrawalActions.reduce(0) { $0 + $1.amountWithdrawn }
     }
 }
 

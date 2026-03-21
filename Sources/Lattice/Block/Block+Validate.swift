@@ -6,12 +6,23 @@ import CollectionConcurrencyKit
 
 public extension Block {
     func getDifficultyHash() -> UInt256 {
+        var data = Data()
+        data.reserveCapacity(512)
         if let previousBlockCID = previousBlock?.rawCID {
-            let hashString = previousBlockCID + transactions.rawCID + difficulty.toHexString() + nextDifficulty.toHexString() + spec.rawCID + parentHomestead.rawCID + homestead.rawCID + frontier.rawCID + childBlocks.rawCID + String(index) + String(timestamp) + String(nonce)
-            return UInt256.hash(hashString.toData() ?? Data())
+            data.append(contentsOf: previousBlockCID.utf8)
         }
-        let hashString = transactions.rawCID + difficulty.toHexString() + nextDifficulty.toHexString() + spec.rawCID + parentHomestead.rawCID + homestead.rawCID + frontier.rawCID + childBlocks.rawCID + String(index) + String(timestamp) + String(nonce)
-        return UInt256.hash(hashString.toData() ?? Data())
+        data.append(contentsOf: transactions.rawCID.utf8)
+        data.append(contentsOf: difficulty.toHexString().utf8)
+        data.append(contentsOf: nextDifficulty.toHexString().utf8)
+        data.append(contentsOf: spec.rawCID.utf8)
+        data.append(contentsOf: parentHomestead.rawCID.utf8)
+        data.append(contentsOf: homestead.rawCID.utf8)
+        data.append(contentsOf: frontier.rawCID.utf8)
+        data.append(contentsOf: childBlocks.rawCID.utf8)
+        data.append(contentsOf: String(index).utf8)
+        data.append(contentsOf: String(timestamp).utf8)
+        data.append(contentsOf: String(nonce).utf8)
+        return UInt256.hash(data)
     }
     
     func validateGenesis(fetcher: Fetcher, directory: String?, parentSpec: ChainSpec? = nil) async throws -> Bool {
@@ -19,14 +30,9 @@ public extension Block {
         if Int64(Date().timeIntervalSince1970 * 1000) < timestamp { return false }
         if index != 0 { return false }
         if homestead.rawCID != LatticeStateHeader(node: LatticeState.emptyState()).rawCID { return false }
-        guard let transactionsNode = try await transactions.resolveRecursive(fetcher: fetcher).node else { return false }
-        let txHeaders = try transactionsNode.allKeysAndValues().values
-        if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
-        let txs = txHeaders.map { $0.node! }
-        if try await txs.concurrentMap({ try await $0.validateTransactionForGenesis(fetcher: fetcher) }).contains(false) { return false }
-        let transactionBodiesMaybe = txs.map { $0.body.node }
-        if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
-        let transactionBodies = transactionBodiesMaybe.map { $0! }
+        guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
+            try await tx.validateTransactionForGenesis(fetcher: fetcher)
+        }) else { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
         if specNode.directory != directory { return false }
         if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
@@ -38,42 +44,36 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
-        let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
-        let genesisTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        let allAccountActions = Block.getAllAccountActions(transactionBodies)
+        let allDepositActions = Block.getAllDepositActions(transactionBodies)
+        let genesisTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
         if try !validateBalanceChangesForGenesis(spec: specNode, allDepositActions: allDepositActions, allAccountActions: allAccountActions, totalFees: genesisTotalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: allDepositActions, allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allDepositActions: allDepositActions, allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allReceiptActions: Block.getAllReceiptActions(transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
     
     func validateNexus(fetcher: Fetcher) async throws -> Bool {
         guard let previousBlockNode = try await previousBlock?.resolve(fetcher: fetcher).node else { return false }
-        guard let blockHeaderData = toData() else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
         if !validateTimestamp(previousBlock: previousBlockNode) { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode) { return false }
-        guard let transactionsNode = try await transactions.resolveRecursive(fetcher: fetcher).node else { return false }
-        let txHeaders = try transactionsNode.allKeysAndValues().values
-        if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
-        let txs = txHeaders.map { $0.node! }
-        if try await txs.concurrentMap({ try await $0.validateTransactionForNexus(fetcher: fetcher) }).contains(false) { return false }
-        let transactionBodiesMaybe = txs.map { $0.body.node }
-        if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
-        let transactionBodies = transactionBodiesMaybe.map { $0! }
+        guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
+            try await tx.validateTransactionForNexus(fetcher: fetcher)
+        }) else { return false }
         if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
         if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
-        let nexusTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        let allAccountActions = Block.getAllAccountActions(transactionBodies)
+        let nexusTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
         if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: nexusTotalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: [], allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allDepositActions: [], allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allReceiptActions: Block.getAllReceiptActions(transactionBodies), allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
     
@@ -83,7 +83,6 @@ public extension Block {
     
     func validate(nexusHash: UInt256, parentChainBlock: Block, fetcher: Fetcher) async throws -> Bool {
         guard let previousBlockNode = try await previousBlock?.resolve(fetcher: fetcher).node else { return false }
-        guard let blockHeaderData = toData() else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateParentState(parent: parentChainBlock) { return false }
@@ -97,9 +96,9 @@ public extension Block {
         let txHeaders = try transactionsNode.allKeysAndValues().values
         if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
         let txs = txHeaders.map { $0.node! }
-        async let homestedStateFuture = homestead.resolve(fetcher: fetcher)
+        async let homesteadStateFuture = homestead.resolve(fetcher: fetcher)
         async let parentChainHomesteadStateFuture = parentChainBlock.parentHomestead.resolve(fetcher: fetcher)
-        let (homesteadState, parentChainHomesteadState) = try await (homestedStateFuture, parentChainHomesteadStateFuture)
+        let (homesteadState, parentChainHomesteadState) = try await (homesteadStateFuture, parentChainHomesteadStateFuture)
         guard let homesteadStateNode = homesteadState.node else { throw ValidationErrors.homesteadNotResolved }
         guard let parentHomesteadStateNode = parentChainHomesteadState.node else { throw ValidationErrors.homesteadNotResolved }
         if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, fetcher: fetcher) }).contains(false) { return false }
@@ -113,18 +112,18 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = getAllAccountActions(transactionBodies: transactionBodies)
-        let allDepositActions = getAllDepositActions(transactionBodies: transactionBodies)
-        let allWithdrawalActions = getAllWithdrawalActions(transactionBodies: transactionBodies)
-        let childTotalFees = transactionBodies.map { $0.fee }.reduce(0, +)
+        let allAccountActions = Block.getAllAccountActions(transactionBodies)
+        let allDepositActions = Block.getAllDepositActions(transactionBodies)
+        let allWithdrawalActions = Block.getAllWithdrawalActions(transactionBodies)
+        let childTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
         if try !validateBalanceChanges(spec: specNode, allDepositActions: allDepositActions, allWithdrawalActions: allWithdrawalActions, allAccountActions: allAccountActions, totalFees: childTotalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: allDepositActions, allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: allWithdrawalActions, fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allDepositActions: allDepositActions, allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allReceiptActions: Block.getAllReceiptActions(transactionBodies), allWithdrawalActions: allWithdrawalActions, fetcher: fetcher) { return false }
         return true
     }
     
     func validateFrontierState(transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> Bool {
-        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: getAllAccountActions(transactionBodies: transactionBodies), allActions: getAllActions(transactionBodies: transactionBodies), allDepositActions: getAllDepositActions(transactionBodies: transactionBodies), allGenesisActions: getAllGenesisActions(transactionBodies: transactionBodies), allPeerActions: getAllPeerActions(transactionBodies: transactionBodies), allReceiptActions: getAllReceiptActions(transactionBodies: transactionBodies), allWithdrawalActions: getAllWithdrawalActions(transactionBodies: transactionBodies), fetcher: fetcher)
+        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: Block.getAllAccountActions(transactionBodies), allActions: Block.getAllActions(transactionBodies), allDepositActions: Block.getAllDepositActions(transactionBodies), allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allReceiptActions: Block.getAllReceiptActions(transactionBodies), allWithdrawalActions: Block.getAllWithdrawalActions(transactionBodies), fetcher: fetcher)
     }
     
     // transactions should be fully resolved
@@ -135,13 +134,13 @@ public extension Block {
         async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
         let (finalFrontier, finalUpdatedHomestead) = await (try resolvedFrontier, try updatedHomestead)
         guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
-        return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.withdrawalState.rawCID == finalUpdatedHomestead.withdrawalState.rawCID
+        return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.withdrawalState.rawCID == finalUpdatedHomestead.withdrawalState.rawCID && frontierNode.transactionState.rawCID == finalUpdatedHomestead.transactionState.rawCID
     }
     
     func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let reward = spec.rewardAtBlock(index)
-        let totalDeposited = getTotalDeposited(allDepositActions: allDepositActions)
-        let totalWithdrawn = getTotalWithdrawn(allWithdrawalActions: allWithdrawalActions)
+        let totalDeposited = Block.getTotalDeposited(allDepositActions)
+        let totalWithdrawn = Block.getTotalWithdrawn(allWithdrawalActions)
         let totalBalanceBefore = allAccountActions.map { $0.oldBalance }.reduce(0, +)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
         let (income, incomeOverflow) = totalBalanceBefore.addingReportingOverflow(totalWithdrawn)
@@ -155,7 +154,7 @@ public extension Block {
 
     func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
-        let totalDeposited = getTotalDeposited(allDepositActions: allDepositActions)
+        let totalDeposited = Block.getTotalDeposited(allDepositActions)
         let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
         let (incomeWithFees, overflow) = premineAmount.addingReportingOverflow(totalFees)
         if overflow { return false }
@@ -210,6 +209,17 @@ public extension Block {
         return blockData.count <= spec.maxBlockSize
     }
     
+    func resolveTransactionBodies(fetcher: Fetcher, validator: @escaping @Sendable (Transaction) async throws -> Bool) async throws -> [TransactionBody]? {
+        guard let transactionsNode = try await transactions.resolveRecursive(fetcher: fetcher).node else { return nil }
+        let txHeaders = try transactionsNode.allKeysAndValues().values
+        if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
+        let txs = txHeaders.map { $0.node! }
+        if try await txs.concurrentMap({ try await validator($0) }).contains(false) { return nil }
+        let transactionBodiesMaybe = txs.map { $0.body.node }
+        if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
+        return transactionBodiesMaybe.map { $0! }
+    }
+
     func validateGenesisTransactions(fetcher: Fetcher, transactionBodies: [TransactionBody], parentSpec: ChainSpec? = nil) async throws -> Bool {
         return try await !transactionBodies.concurrentMap { transactionBody in
             try await transactionBody.genesisActionsAreValid(fetcher: fetcher, parentSpec: parentSpec)
