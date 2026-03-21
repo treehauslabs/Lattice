@@ -101,24 +101,41 @@ public struct BlockBuilder {
         targetDifficulty: UInt256,
         maxAttempts: UInt64 = UInt64.max
     ) -> Block? {
+        var prefix = Data()
+        prefix.reserveCapacity(512)
+        if let previousBlockCID = block.previousBlock?.rawCID {
+            prefix.append(contentsOf: previousBlockCID.utf8)
+        }
+        prefix.append(contentsOf: block.transactions.rawCID.utf8)
+        prefix.append(contentsOf: block.difficulty.toHexString().utf8)
+        prefix.append(contentsOf: block.nextDifficulty.toHexString().utf8)
+        prefix.append(contentsOf: block.spec.rawCID.utf8)
+        prefix.append(contentsOf: block.parentHomestead.rawCID.utf8)
+        prefix.append(contentsOf: block.homestead.rawCID.utf8)
+        prefix.append(contentsOf: block.frontier.rawCID.utf8)
+        prefix.append(contentsOf: block.childBlocks.rawCID.utf8)
+        prefix.append(contentsOf: String(block.index).utf8)
+        prefix.append(contentsOf: String(block.timestamp).utf8)
+
         for nonce in 0..<maxAttempts {
-            let candidate = Block(
-                previousBlock: block.previousBlock,
-                transactions: block.transactions,
-                difficulty: block.difficulty,
-                nextDifficulty: block.nextDifficulty,
-                spec: block.spec,
-                parentHomestead: block.parentHomestead,
-                homestead: block.homestead,
-                frontier: block.frontier,
-                childBlocks: block.childBlocks,
-                index: block.index,
-                timestamp: block.timestamp,
-                nonce: nonce
-            )
-            let hash = candidate.getDifficultyHash()
+            var data = prefix
+            data.append(contentsOf: String(nonce).utf8)
+            let hash = UInt256.hash(data)
             if targetDifficulty >= hash {
-                return candidate
+                return Block(
+                    previousBlock: block.previousBlock,
+                    transactions: block.transactions,
+                    difficulty: block.difficulty,
+                    nextDifficulty: block.nextDifficulty,
+                    spec: block.spec,
+                    parentHomestead: block.parentHomestead,
+                    homestead: block.homestead,
+                    frontier: block.frontier,
+                    childBlocks: block.childBlocks,
+                    index: block.index,
+                    timestamp: block.timestamp,
+                    nonce: nonce
+                )
             }
         }
         return nil

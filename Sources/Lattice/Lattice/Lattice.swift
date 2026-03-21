@@ -43,18 +43,12 @@ public actor Lattice {
                 }
                 return true
             }
-            return await nexus.processNonChainBlockForChildren(
-                blockHash: blockHash,
-                block: resolvedBlock,
-                fetcher: fetcher
-            )
-        } else {
-            return await nexus.processNonChainBlockForChildren(
-                blockHash: blockHash,
-                block: resolvedBlock,
-                fetcher: fetcher
-            )
         }
+        return await nexus.processNonChainBlockForChildren(
+            blockHash: blockHash,
+            block: resolvedBlock,
+            fetcher: fetcher
+        )
     }
 }
 

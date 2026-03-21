@@ -141,8 +141,15 @@ public extension Block {
         let reward = spec.rewardAtBlock(index)
         let totalDeposited = Block.getTotalDeposited(allDepositActions)
         let totalWithdrawn = Block.getTotalWithdrawn(allWithdrawalActions)
-        let totalBalanceBefore = allAccountActions.map { $0.oldBalance }.reduce(0, +)
-        let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
+        var totalBalanceBefore: UInt64 = 0
+        var totalBalanceAfter: UInt64 = 0
+        for action in allAccountActions {
+            let (newBefore, beforeOverflow) = totalBalanceBefore.addingReportingOverflow(action.oldBalance)
+            let (newAfter, afterOverflow) = totalBalanceAfter.addingReportingOverflow(action.newBalance)
+            if beforeOverflow || afterOverflow { return false }
+            totalBalanceBefore = newBefore
+            totalBalanceAfter = newAfter
+        }
         let (income, incomeOverflow) = totalBalanceBefore.addingReportingOverflow(totalWithdrawn)
         let (incomeWithReward, rewardOverflow) = income.addingReportingOverflow(reward)
         let (incomeWithFees, feeOverflow) = incomeWithReward.addingReportingOverflow(totalFees)
@@ -155,7 +162,12 @@ public extension Block {
     func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
         let totalDeposited = Block.getTotalDeposited(allDepositActions)
-        let totalBalanceAfter = allAccountActions.map { $0.newBalance }.reduce(0, +)
+        var totalBalanceAfter: UInt64 = 0
+        for action in allAccountActions {
+            let (newAfter, overflow) = totalBalanceAfter.addingReportingOverflow(action.newBalance)
+            if overflow { return false }
+            totalBalanceAfter = newAfter
+        }
         let (incomeWithFees, overflow) = premineAmount.addingReportingOverflow(totalFees)
         if overflow { return false }
         guard incomeWithFees >= totalDeposited else { return false }
@@ -197,7 +209,7 @@ public extension Block {
     }
     
     func validateStateDeltaSize(spec: ChainSpec, transactionBodies: [TransactionBody]) throws -> Bool {
-        return try transactionBodies.map { try $0.getStateDelta() }.reduce(0, +) <= spec.maxStateGrowth
+        return try transactionBodies.reduce(0) { try $0 + $1.getStateDelta() } <= spec.maxStateGrowth
     }
     
     func validateMaxTransactionCount(spec: ChainSpec, transactionBodies: [TransactionBody]) -> Bool {

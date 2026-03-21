@@ -54,14 +54,15 @@ public struct TransactionBody: Scalar {
     }
     
     func getStateDelta() throws -> Int {
-        let accountStateDelta = try accountActions.map { try $0.stateDelta() }.reduce(0, +)
-        let actionStateDelta = try actions.map { try $0.stateDelta() }.reduce(0, +)
-        let depositStateDelta = depositActions.map { $0.stateDelta() }.reduce(0, +)
-        let genesisStateDelta = try genesisActions.map { try $0.stateDelta() }.reduce(0, +)
-        let peerStateDelta = try peerActions.map { try $0.stateDelta() }.reduce(0, +)
-        let receiptStateDelta = try receiptActions.map { try $0.stateDelta() }.reduce(0, +)
-        let withdrawalStateDelta = try withdrawalActions.map { try $0.stateDelta() }.reduce(0, +)
-        return accountStateDelta + actionStateDelta + depositStateDelta + genesisStateDelta + peerStateDelta + receiptStateDelta + withdrawalStateDelta
+        var delta = 0
+        for a in accountActions { delta += try a.stateDelta() }
+        for a in actions { delta += try a.stateDelta() }
+        for a in depositActions { delta += a.stateDelta() }
+        for a in genesisActions { delta += try a.stateDelta() }
+        for a in peerActions { delta += try a.stateDelta() }
+        for a in receiptActions { delta += try a.stateDelta() }
+        for a in withdrawalActions { delta += try a.stateDelta() }
+        return delta
     }
     
     func verifyActionFilters(spec: ChainSpec) -> Bool {

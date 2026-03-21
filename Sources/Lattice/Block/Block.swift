@@ -59,14 +59,16 @@ public struct Block: Hashable {
     public func getGenesisSize() throws -> Int {
         guard let blockCount = toData()?.count else { throw ValidationErrors.serializationError }
         guard let specCount = spec.node?.toData()?.count else { throw ValidationErrors.serializationError }
-        guard let transactionKeysCount = try? transactions.node?.allKeys().map({ $0.count }).reduce(0, +) else { throw ValidationErrors.transactionNotResolved }
+        guard let txKeys = try? transactions.node?.allKeys() else { throw ValidationErrors.transactionNotResolved }
+        let transactionKeysCount = txKeys.reduce(0) { $0 + $1.count }
         guard let transactionsKeysAndValues = try? transactions.node?.allKeysAndValues() else { throw ValidationErrors.transactionNotResolved }
         var totalTransactionDataCount = 0
         for transaction in transactionsKeysAndValues {
-            guard let transctionDataCount = transaction.value.node?.toData()?.count else { throw ValidationErrors.transactionNotResolved }
-            totalTransactionDataCount += transctionDataCount
+            guard let txDataCount = transaction.value.node?.toData()?.count else { throw ValidationErrors.transactionNotResolved }
+            totalTransactionDataCount += txDataCount
         }
-        guard let childBlocksKeysCount = try childBlocks.node?.allKeys().map({ $0.count }).reduce(0, +) else { throw ValidationErrors.transactionNotResolved }
+        guard let cbKeys = try? childBlocks.node?.allKeys() else { throw ValidationErrors.transactionNotResolved }
+        let childBlocksKeysCount = cbKeys.reduce(0) { $0 + $1.count }
         guard let childBlocksKeysAndValues = try childBlocks.node?.allKeysAndValues() else { throw ValidationErrors.transactionNotResolved }
         var childBlocksCount = 0
         for block in childBlocksKeysAndValues {
