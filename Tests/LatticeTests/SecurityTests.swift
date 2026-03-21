@@ -76,13 +76,13 @@ final class DoubleSpendTests: XCTestCase {
     func testTransactionNonceReplayBlocked() {
         let body1 = TransactionBody(
             accountActions: [AccountAction(owner: "alice", oldBalance: 100, newBalance: 50)],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
-            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
         let body2 = TransactionBody(
             accountActions: [AccountAction(owner: "alice", oldBalance: 50, newBalance: 0)],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
-            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
         let key1 = TransactionStateHeader.transactionKey(body1)
         let key2 = TransactionStateHeader.transactionKey(body2)
@@ -91,13 +91,13 @@ final class DoubleSpendTests: XCTestCase {
 
     func testDifferentSignersSameNonceNotBlocked() {
         let body1 = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: ["alice"], fee: 0, nonce: 1
         )
         let body2 = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: ["bob"], fee: 0, nonce: 1
         )
         XCTAssertNotEqual(
@@ -116,8 +116,8 @@ final class SignatureForgeryTests: XCTestCase {
     func testForgedSignatureRejected() {
         let kp = CryptoUtils.generateKeyPair()
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID],
             fee: 0, nonce: 1
         )
@@ -131,8 +131,8 @@ final class SignatureForgeryTests: XCTestCase {
         let kp2 = CryptoUtils.generateKeyPair()
         let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp2.publicKey)).rawCID
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [signerCID], fee: 0, nonce: 1
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
@@ -145,8 +145,8 @@ final class SignatureForgeryTests: XCTestCase {
     func testEmptySignatureRejected() {
         let kp = CryptoUtils.generateKeyPair()
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID],
             fee: 0, nonce: 1
         )
@@ -174,7 +174,7 @@ final class BalanceConservationTests: XCTestCase {
         )
         let accountActions = [AccountAction(owner: "miner", oldBalance: 0, newBalance: 999_999_999)]
         let valid = try g.validateBalanceChangesForGenesis(
-            spec: spec(), allDepositActions: [], allAccountActions: accountActions, totalFees: 0
+            spec: spec(), allSwapActions: [], allAccountActions: accountActions, totalFees: 0
         )
         XCTAssertFalse(valid, "Cannot create more value than premine allows")
     }
@@ -199,7 +199,7 @@ final class BalanceConservationTests: XCTestCase {
             AccountAction(owner: "miner", oldBalance: 0, newBalance: reward + fees)
         ]
         let valid = try g.validateBalanceChanges(
-            spec: s, allDepositActions: [], allWithdrawalActions: [],
+            spec: s, allSwapActions: [], allSwapClaimActions: [],
             allAccountActions: accountActions, totalFees: fees
         )
         XCTAssertTrue(valid, "Miner can claim reward + fees")
@@ -208,7 +208,7 @@ final class BalanceConservationTests: XCTestCase {
             AccountAction(owner: "miner", oldBalance: 0, newBalance: reward + fees + 1)
         ]
         let invalid = try g.validateBalanceChanges(
-            spec: s, allDepositActions: [], allWithdrawalActions: [],
+            spec: s, allSwapActions: [], allSwapClaimActions: [],
             allAccountActions: overClaim, totalFees: fees
         )
         XCTAssertFalse(invalid, "Miner cannot claim more than reward + fees from nothing")
@@ -326,13 +326,13 @@ final class FilterBypassTests: XCTestCase {
             transactionFilters: ["function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 100; }"]
         )
         let cheapTx = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [], fee: 50, nonce: 1
         )
         let expensiveTx = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [], fee: 200, nonce: 2
         )
         XCTAssertFalse(cheapTx.verifyFilters(spec: feeSpec), "Below minimum fee must be rejected")
@@ -366,8 +366,8 @@ final class FilterBypassTests: XCTestCase {
             transactionFilters: []
         )
         let cheapTx = TransactionBody(
-            accountActions: [], actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
+            genesisActions: [], peerActions: [], settleActions: [],
             signers: [], fee: 10, nonce: 1
         )
         XCTAssertTrue(cheapTx.verifyFilters(spec: childSpec), "Child filter alone accepts")
@@ -559,43 +559,43 @@ final class EconomicInvariantTests: XCTestCase {
 @MainActor
 final class CrossChainKeyIntegrityTests: XCTestCase {
 
-    func testDepositKeyRoundTrip() {
+    func testSwapKeyRoundTrip() {
         for nonce: UInt128 in [0, 1, 42, UInt128.max / 2] {
-            let key = DepositKey(nonce: nonce, demander: "abc", amountDemanded: 999)
-            let parsed = DepositKey(key.description)
+            let key = SwapKey(swapAction: SwapAction(nonce: nonce, sender: "abc", recipient: "def", amount: 999, timelock: 1000))
+            let parsed = SwapKey(key.description)
             XCTAssertNotNil(parsed)
             XCTAssertEqual(parsed?.nonce, nonce)
-            XCTAssertEqual(parsed?.demander, "abc")
-            XCTAssertEqual(parsed?.amountDemanded, 999)
+            XCTAssertEqual(parsed?.sender, "abc")
+            XCTAssertEqual(parsed?.recipient, "def")
+            XCTAssertEqual(parsed?.amount, 999)
+            XCTAssertEqual(parsed?.timelock, 1000)
         }
     }
 
-    func testReceiptKeyRoundTrip() {
-        let action = ReceiptAction(withdrawer: "w", nonce: 77, demander: "d", amountDemanded: 500, directory: "chain1")
-        let key = ReceiptKey(receiptAction: action)
-        let parsed = ReceiptKey(key.description)
+    func testSettleKeyRoundTrip() {
+        let swapAction = SwapAction(nonce: 77, sender: "s", recipient: "d", amount: 500, timelock: 1000)
+        let key = SettleKey(directory: "chain1", swapAction: swapAction)
+        let parsed = SettleKey(key.description)
         XCTAssertNotNil(parsed)
         XCTAssertEqual(parsed?.directory, "chain1")
-        XCTAssertEqual(parsed?.demander, "d")
-        XCTAssertEqual(parsed?.amountDemanded, 500)
-        XCTAssertEqual(parsed?.nonce, 77)
+        XCTAssertEqual(parsed?.swapKey, SwapKey(swapAction: swapAction).description)
     }
 
-    func testDepositAndWithdrawalKeysMatch() {
-        let deposit = DepositAction(nonce: 42, demander: "alice", amountDemanded: 100, amountDeposited: 100)
-        let withdrawal = WithdrawalAction(withdrawer: "bob", nonce: 42, demander: "alice", amountDemanded: 100, amountWithdrawn: 100)
-        let depositKey = DepositKey(depositAction: deposit)
-        let withdrawalKey = DepositKey(withdrawalAction: withdrawal)
-        XCTAssertEqual(depositKey.description, withdrawalKey.description,
-            "Deposit and withdrawal must produce the same lookup key")
+    func testSwapAndClaimKeysMatch() {
+        let swap = SwapAction(nonce: 42, sender: "alice", recipient: "bob", amount: 100, timelock: 1000)
+        let claim = SwapClaimAction(nonce: 42, sender: "alice", recipient: "bob", amount: 100, timelock: 1000, isRefund: false)
+        let swapKey = SwapKey(swapAction: swap)
+        let claimKey = SwapKey(swapClaimAction: claim)
+        XCTAssertEqual(swapKey.description, claimKey.description,
+            "Swap and claim must produce the same lookup key")
     }
 
     func testMalformedKeysReturnNil() {
-        for bad in ["", "x", "a/b", "a/b/c/d/e/f", "a/notanumber/1"] {
-            XCTAssertNil(DepositKey(bad), "'\(bad)' should fail to parse as DepositKey")
+        for bad in ["", "x", "a/b", "a/b/c", "a/b/notanumber/2/3", "a/b/1/notanumber/3", "a/b/1/2/notanonce"] {
+            XCTAssertNil(SwapKey(bad), "'\(bad)' should fail to parse as SwapKey")
         }
-        for bad in ["", "x", "a/b", "a/b/c", "a/b/notanumber/1"] {
-            XCTAssertNil(ReceiptKey(bad), "'\(bad)' should fail to parse as ReceiptKey")
+        for bad in ["", "x", "nodirectory", "dir:bad", "dir:a/b"] {
+            XCTAssertNil(SettleKey(bad), "'\(bad)' should fail to parse as SettleKey")
         }
     }
 }
@@ -605,14 +605,13 @@ final class CrossChainKeyIntegrityTests: XCTestCase {
 @MainActor
 final class BugRegressionTests: XCTestCase {
 
-    func testReceiptKeySeparatorFixed() {
-        let key = ReceiptKey(receiptAction: ReceiptAction(
-            withdrawer: "w", nonce: 42, demander: "d", amountDemanded: 100, directory: "c"
-        ))
+    func testSettleKeySeparatorFixed() {
+        let swapAction = SwapAction(nonce: 42, sender: "s", recipient: "d", amount: 100, timelock: 1000)
+        let key = SettleKey(directory: "c", swapAction: swapAction)
         let desc = key.description
-        XCTAssertTrue(desc.contains("/42"), "Nonce must be separated by /")
-        let parts = desc.split(separator: "/")
-        XCTAssertEqual(parts.count, 4, "Must have 4 slash-separated parts")
+        XCTAssertTrue(desc.contains(":"), "Directory and swapKey must be separated by :")
+        let colonParts = desc.split(separator: ":")
+        XCTAssertEqual(colonParts.count, 2, "Must have 2 colon-separated parts")
     }
 
     func testAccountStateProveUsesCorrectProofTypes() async throws {

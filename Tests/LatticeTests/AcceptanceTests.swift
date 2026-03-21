@@ -34,9 +34,9 @@ final class MempoolTests: XCTestCase {
         var txs: [Transaction] = []
         for i: UInt64 in 0..<5 {
             let body = TransactionBody(
-                accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [],
-                withdrawalActions: [], signers: [signerCID], fee: i * 10, nonce: i
+                accountActions: [], actions: [], swapActions: [],
+                swapClaimActions: [], genesisActions: [], peerActions: [],
+                settleActions: [], signers: [signerCID], fee: i * 10, nonce: i
             )
             let bodyHeader = HeaderImpl<TransactionBody>(node: body)
             let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -65,9 +65,9 @@ final class MempoolTests: XCTestCase {
         let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
 
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
-            withdrawalActions: [], signers: [signerCID], fee: 10, nonce: 1
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [], genesisActions: [], peerActions: [],
+            settleActions: [], signers: [signerCID], fee: 10, nonce: 1
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
         let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -84,9 +84,9 @@ final class MempoolTests: XCTestCase {
         let kp = CryptoUtils.generateKeyPair()
 
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
-            withdrawalActions: [], signers: ["fake"], fee: 10, nonce: 1
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [], genesisActions: [], peerActions: [],
+            settleActions: [], signers: ["fake"], fee: 10, nonce: 1
         )
         let tx = Transaction(signatures: [kp.publicKey: "deadbeef"], body: HeaderImpl<TransactionBody>(node: body))
 
@@ -101,9 +101,9 @@ final class MempoolTests: XCTestCase {
 
         for i: UInt64 in 0..<4 {
             let body = TransactionBody(
-                accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [],
-                withdrawalActions: [], signers: [signerCID], fee: (i + 1) * 10, nonce: i
+                accountActions: [], actions: [], swapActions: [],
+                swapClaimActions: [], genesisActions: [], peerActions: [],
+                settleActions: [], signers: [signerCID], fee: (i + 1) * 10, nonce: i
             )
             let bodyHeader = HeaderImpl<TransactionBody>(node: body)
             let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -127,9 +127,9 @@ final class MempoolTests: XCTestCase {
         var cids: [String] = []
         for i: UInt64 in 0..<3 {
             let body = TransactionBody(
-                accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [],
-                withdrawalActions: [], signers: [signerCID], fee: 10, nonce: i
+                accountActions: [], actions: [], swapActions: [],
+                swapClaimActions: [], genesisActions: [], peerActions: [],
+                settleActions: [], signers: [signerCID], fee: 10, nonce: i
             )
             let bodyHeader = HeaderImpl<TransactionBody>(node: body)
             let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -187,9 +187,9 @@ final class FullPipelineAcceptanceTests: XCTestCase {
 
         for i: UInt64 in 0..<5 {
             let body = TransactionBody(
-                accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [],
-                withdrawalActions: [], signers: [signerCID], fee: i + 1, nonce: i
+                accountActions: [], actions: [], swapActions: [],
+                swapClaimActions: [], genesisActions: [], peerActions: [],
+                settleActions: [], signers: [signerCID], fee: i + 1, nonce: i
             )
             let bodyHeader = HeaderImpl<TransactionBody>(node: body)
             let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!

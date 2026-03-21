@@ -183,9 +183,9 @@ final class TransactionRelayTests: XCTestCase {
         let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
 
         let body = TransactionBody(
-            accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
-            withdrawalActions: [], signers: [signerCID], fee: 50, nonce: 1
+            accountActions: [], actions: [], swapActions: [],
+            swapClaimActions: [], genesisActions: [], peerActions: [],
+            settleActions: [], signers: [signerCID], fee: 50, nonce: 1
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
         let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -210,9 +210,9 @@ final class TransactionRelayTests: XCTestCase {
         var txCIDs: [String] = []
         for i: UInt64 in 0..<5 {
             let body = TransactionBody(
-                accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [],
-                withdrawalActions: [], signers: [signerCID], fee: 10, nonce: i
+                accountActions: [], actions: [], swapActions: [],
+                swapClaimActions: [], genesisActions: [], peerActions: [],
+                settleActions: [], signers: [signerCID], fee: 10, nonce: i
             )
             let bodyHeader = HeaderImpl<TransactionBody>(node: body)
             let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!

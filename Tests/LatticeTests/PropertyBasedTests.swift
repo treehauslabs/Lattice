@@ -350,17 +350,18 @@ final class BalanceConservationPropertyTests: XCTestCase {
         }
     }
 
-    // Property: Deposit locks reduce available balance
-    func testDepositReducesBalance() {
+    // Property: Swap locks reduce available balance
+    func testSwapLocksBalance() {
         for _ in 0..<100 {
-            let depositAmount = UInt64.random(in: 1...10000)
-            let action = DepositAction(
+            let swapAmount = UInt64.random(in: 1...10000)
+            let action = SwapAction(
                 nonce: UInt128.random(in: 0...UInt128.max),
-                demander: "test_demander",
-                amountDemanded: depositAmount,
-                amountDeposited: depositAmount
+                sender: "test_sender",
+                recipient: "test_recipient",
+                amount: swapAmount,
+                timelock: 1000
             )
-            XCTAssertGreaterThan(action.amountDeposited, 0)
+            XCTAssertGreaterThan(action.amount, 0)
         }
     }
 
@@ -375,11 +376,11 @@ final class BalanceConservationPropertyTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [action],
                 actions: [],
-                depositActions: [],
+                swapActions: [],
+                swapClaimActions: [],
                 genesisActions: [],
                 peerActions: [],
-                receiptActions: [],
-                withdrawalActions: [],
+                settleActions: [],
                 signers: [],
                 fee: 0,
                 nonce: 0
@@ -390,11 +391,11 @@ final class BalanceConservationPropertyTests: XCTestCase {
             let bodyWithSigner = TransactionBody(
                 accountActions: [action],
                 actions: [],
-                depositActions: [],
+                swapActions: [],
+                swapClaimActions: [],
                 genesisActions: [],
                 peerActions: [],
-                receiptActions: [],
-                withdrawalActions: [],
+                settleActions: [],
                 signers: [owner],
                 fee: 0,
                 nonce: 0
@@ -415,11 +416,11 @@ final class BalanceConservationPropertyTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [action],
                 actions: [],
-                depositActions: [],
+                swapActions: [],
+                swapClaimActions: [],
                 genesisActions: [],
                 peerActions: [],
-                receiptActions: [],
-                withdrawalActions: [],
+                settleActions: [],
                 signers: [],
                 fee: 0,
                 nonce: 0
@@ -430,76 +431,85 @@ final class BalanceConservationPropertyTests: XCTestCase {
     }
 }
 
-// MARK: - Cross-Chain Transfer Protocol Properties
+// MARK: - Cross-Chain Swap Protocol Properties
 
 final class CrossChainProtocolPropertyTests: XCTestCase {
 
-    // Property: DepositKey round-trips through string representation
-    func testDepositKeyRoundTrip() {
+    // Property: SwapKey round-trips through string representation
+    func testSwapKeyRoundTrip() {
         for _ in 0..<200 {
             let nonce = UInt128.random(in: 0...UInt128.max)
-            let demander = "demander_\(UUID().uuidString)"
+            let sender = "sender_\(UUID().uuidString)"
+            let recipient = "recipient_\(UUID().uuidString)"
             let amount = UInt64.random(in: 1...UInt64.max)
+            let timelock = UInt64.random(in: 1...UInt64.max)
 
-            let key = DepositKey(nonce: nonce, demander: demander, amountDemanded: amount)
+            let key = SwapKey(swapAction: SwapAction(nonce: nonce, sender: sender, recipient: recipient, amount: amount, timelock: timelock))
             let stringRepr = key.description
-            let parsed = DepositKey(stringRepr)
+            let parsed = SwapKey(stringRepr)
 
-            XCTAssertNotNil(parsed, "Failed to parse DepositKey: \(stringRepr)")
+            XCTAssertNotNil(parsed, "Failed to parse SwapKey: \(stringRepr)")
             if let parsed = parsed {
                 XCTAssertEqual(parsed.nonce, nonce)
-                XCTAssertEqual(parsed.demander, demander)
-                XCTAssertEqual(parsed.amountDemanded, amount)
+                XCTAssertEqual(parsed.sender, sender)
+                XCTAssertEqual(parsed.recipient, recipient)
+                XCTAssertEqual(parsed.amount, amount)
+                XCTAssertEqual(parsed.timelock, timelock)
             }
         }
     }
 
-    // Property: WithdrawalAction produces matching DepositKey
-    func testWithdrawalProducesMatchingDepositKey() {
+    // Property: SwapClaimAction produces matching SwapKey
+    func testSwapClaimProducesMatchingSwapKey() {
         for _ in 0..<100 {
             let nonce = UInt128.random(in: 0...UInt128.max)
-            let demander = "dem_\(UUID().uuidString)"
+            let sender = "sender_\(UUID().uuidString)"
+            let recipient = "recipient_\(UUID().uuidString)"
             let amount = UInt64.random(in: 1...1000000)
+            let timelock: UInt64 = 1000
 
-            let deposit = DepositAction(nonce: nonce, demander: demander, amountDemanded: amount, amountDeposited: amount)
-            let withdrawal = WithdrawalAction(withdrawer: "withdrawer", nonce: nonce, demander: demander, amountDemanded: amount, amountWithdrawn: amount)
+            let swap = SwapAction(nonce: nonce, sender: sender, recipient: recipient, amount: amount, timelock: timelock)
+            let claim = SwapClaimAction(nonce: nonce, sender: sender, recipient: recipient, amount: amount, timelock: timelock, isRefund: false)
 
-            let depositKey = DepositKey(depositAction: deposit)
-            let withdrawalDepositKey = DepositKey(withdrawalAction: withdrawal)
+            let swapKey = SwapKey(swapAction: swap)
+            let claimKey = SwapKey(swapClaimAction: claim)
 
-            XCTAssertEqual(depositKey.description, withdrawalDepositKey.description,
-                           "Deposit and withdrawal should produce matching keys")
+            XCTAssertEqual(swapKey.description, claimKey.description,
+                           "Swap and claim should produce matching keys")
         }
     }
 
-    // Property: Withdrawal + Receipt keys are consistent for same withdrawal
-    func testWithdrawalReceiptKeyConsistency() {
+    // Property: SettleKey consistency for same swap
+    func testSettleKeyConsistency() {
         let directory = "TestChain"
         for _ in 0..<100 {
             let nonce = UInt128.random(in: 0...UInt128.max)
-            let demander = "dem_\(UUID().uuidString)"
+            let sender = "sender_\(UUID().uuidString)"
+            let recipient = "recipient_\(UUID().uuidString)"
             let amount = UInt64.random(in: 1...1000000)
+            let timelock: UInt64 = 1000
 
-            let withdrawal = WithdrawalAction(withdrawer: "w", nonce: nonce, demander: demander, amountDemanded: amount, amountWithdrawn: amount)
+            let swap = SwapAction(nonce: nonce, sender: sender, recipient: recipient, amount: amount, timelock: timelock)
+            let claim = SwapClaimAction(nonce: nonce, sender: sender, recipient: recipient, amount: amount, timelock: timelock, isRefund: false)
 
-            let depositKey = DepositKey(withdrawalAction: withdrawal)
-            let receiptKey = ReceiptKey(withdrawalAction: withdrawal, directory: directory)
+            let settleKeyFromSwap = SettleKey(directory: directory, swapAction: swap)
+            let settleKeyFromClaim = SettleKey(directory: directory, swapClaimAction: claim)
 
-            XCTAssertEqual(depositKey.nonce, receiptKey.nonce)
-            XCTAssertEqual(depositKey.demander, receiptKey.demander)
-            XCTAssertEqual(depositKey.amountDemanded, receiptKey.amountDemanded)
-            XCTAssertEqual(receiptKey.directory, directory)
+            XCTAssertEqual(settleKeyFromSwap.description, settleKeyFromClaim.description)
+            XCTAssertEqual(settleKeyFromSwap.directory, directory)
         }
     }
 
-    // Property: Different nonces produce different deposit keys
+    // Property: Different nonces produce different swap keys
     func testUniqueNoncesProduceUniqueKeys() {
-        let demander = "test_demander"
+        let sender = "test_sender"
+        let recipient = "test_recipient"
         let amount: UInt64 = 1000
+        let timelock: UInt64 = 1000
         var keys = Set<String>()
 
         for i: UInt128 in 0..<500 {
-            let key = DepositKey(nonce: i, demander: demander, amountDemanded: amount)
+            let key = SwapKey(swapAction: SwapAction(nonce: i, sender: sender, recipient: recipient, amount: amount, timelock: timelock))
             let keyStr = key.description
             XCTAssertFalse(keys.contains(keyStr), "Duplicate key for nonce \(i)")
             keys.insert(keyStr)
@@ -560,17 +570,18 @@ final class StateDeltaPropertyTests: XCTestCase {
         }
     }
 
-    // Property: Deposit state delta is always positive (deposits add state)
-    func testDepositStateDeltaPositive() {
+    // Property: Swap state delta is always positive (swaps add state)
+    func testSwapStateDeltaPositive() {
         for _ in 0..<100 {
-            let action = DepositAction(
+            let action = SwapAction(
                 nonce: UInt128.random(in: 0...UInt128.max),
-                demander: UUID().uuidString,
-                amountDemanded: UInt64.random(in: 1...1000000),
-                amountDeposited: UInt64.random(in: 1...1000000)
+                sender: UUID().uuidString,
+                recipient: UUID().uuidString,
+                amount: UInt64.random(in: 1...1000000),
+                timelock: UInt64.random(in: 1...1000000)
             )
             XCTAssertGreaterThan(action.stateDelta(), 0,
-                                 "Deposit delta should always be positive")
+                                 "Swap delta should always be positive")
         }
     }
 
@@ -587,11 +598,11 @@ final class StateDeltaPropertyTests: XCTestCase {
         let body = TransactionBody(
             accountActions: accountActions,
             actions: kvActions,
-            depositActions: [],
+            swapActions: [],
+            swapClaimActions: [],
             genesisActions: [],
             peerActions: [],
-            receiptActions: [],
-            withdrawalActions: [],
+            settleActions: [],
             signers: [],
             fee: 0,
             nonce: 0
@@ -677,25 +688,24 @@ final class BlockStructurePropertyTests: XCTestCase {
         XCTAssertEqual(state1.rawCID, state2.rawCID)
     }
 
-    // Property: LatticeState has exactly 8 properties
+    // Property: LatticeState has exactly 7 properties
     func testLatticeStatePropertyCount() {
         let state = LatticeState.emptyState()
-        XCTAssertEqual(state.properties().count, 8)
+        XCTAssertEqual(state.properties().count, 7)
     }
 
-    // Property: All 8 sub-state property names are distinct
+    // Property: All 7 sub-state property names are distinct
     func testSubStatePropertyNamesDistinct() {
         let names = [
             ACCOUNT_STATE_PROPERTY,
             GENERAL_STATE_PROPERTY,
-            DEPOSIT_STATE_PROPERTY,
+            SWAP_STATE_PROPERTY,
             PEER_STATE_PROPERTY,
             GENESIS_STATE_PROPERTY,
-            RECEIPT_STATE_PROPERTY,
-            WITHDRAWAL_STATE_PROPERTY,
+            SETTLE_STATE_PROPERTY,
             TRANSACTION_STATE_PROPERTY,
         ]
-        XCTAssertEqual(Set(names).count, 8)
+        XCTAssertEqual(Set(names).count, 7)
     }
 
     // Property: Block has exactly 7 addressable properties

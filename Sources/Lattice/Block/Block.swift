@@ -42,20 +42,20 @@ public struct Block: Hashable {
         self.timestamp = timestamp
         self.nonce = nonce
     }
-    
+
     public static func == (lhs: Block, rhs: Block) -> Bool {
         guard let lhsData = lhs.toData() else { return false }
         guard let rhsData = rhs.toData() else { return false }
         return UInt256.hash(lhsData) == UInt256.hash(rhsData)
     }
-    
+
     public func hash(into hasher: inout Hasher) {
         hasher.combine(difficulty)
         hasher.combine(index)
         hasher.combine(timestamp)
         hasher.combine(nonce)
     }
-    
+
     public func getGenesisSize() throws -> Int {
         guard let blockCount = toData()?.count else { throw ValidationErrors.serializationError }
         guard let specCount = spec.node?.toData()?.count else { throw ValidationErrors.serializationError }
@@ -77,18 +77,18 @@ public struct Block: Hashable {
         }
         return blockCount + specCount + transactionKeysCount + totalTransactionDataCount + childBlocksKeysCount + childBlocksCount
     }
-    
-    
+
+
     public static func getAllAccountActions(_ transactionBodies: [TransactionBody]) -> [AccountAction] {
         transactionBodies.flatMap { $0.accountActions }
     }
 
-    public static func getAllDepositActions(_ transactionBodies: [TransactionBody]) -> [DepositAction] {
-        transactionBodies.flatMap { $0.depositActions }
+    public static func getAllSwapActions(_ transactionBodies: [TransactionBody]) -> [SwapAction] {
+        transactionBodies.flatMap { $0.swapActions }
     }
 
-    public static func getAllWithdrawalActions(_ transactionBodies: [TransactionBody]) -> [WithdrawalAction] {
-        transactionBodies.flatMap { $0.withdrawalActions }
+    public static func getAllSwapClaimActions(_ transactionBodies: [TransactionBody]) -> [SwapClaimAction] {
+        transactionBodies.flatMap { $0.swapClaimActions }
     }
 
     public static func getAllActions(_ transactionBodies: [TransactionBody]) -> [Action] {
@@ -103,16 +103,28 @@ public struct Block: Hashable {
         transactionBodies.flatMap { $0.peerActions }
     }
 
-    public static func getAllReceiptActions(_ transactionBodies: [TransactionBody]) -> [ReceiptAction] {
-        transactionBodies.flatMap { $0.receiptActions }
+    public static func getAllSettleActions(_ transactionBodies: [TransactionBody]) -> [SettleAction] {
+        transactionBodies.flatMap { $0.settleActions }
     }
 
-    public static func getTotalDeposited(_ allDepositActions: [DepositAction]) -> UInt64 {
-        allDepositActions.reduce(0) { $0 + $1.amountDeposited }
+    public static func getTotalSwapLocked(_ allSwapActions: [SwapAction]) -> (total: UInt64, overflow: Bool) {
+        var total: UInt64 = 0
+        for action in allSwapActions {
+            let (result, overflow) = total.addingReportingOverflow(action.amount)
+            if overflow { return (0, true) }
+            total = result
+        }
+        return (total, false)
     }
 
-    public static func getTotalWithdrawn(_ allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
-        allWithdrawalActions.reduce(0) { $0 + $1.amountWithdrawn }
+    public static func getTotalSwapClaimed(_ allSwapClaimActions: [SwapClaimAction]) -> (total: UInt64, overflow: Bool) {
+        var total: UInt64 = 0
+        for action in allSwapClaimActions {
+            let (result, overflow) = total.addingReportingOverflow(action.amount)
+            if overflow { return (0, true) }
+            total = result
+        }
+        return (total, false)
     }
 }
 
@@ -129,11 +141,11 @@ extension Block: Node {
             default: return nil
         }
     }
-    
+
     public func properties() -> Set<PathSegment> {
         return BLOCK_PROPERTIES
     }
-    
+
     public func set(properties: [PathSegment : any cashew.Header]) -> Block {
         return Block(previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
     }

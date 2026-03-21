@@ -5,45 +5,97 @@ import JavaScriptCore
 public struct TransactionBody: Scalar {
     public let accountActions: [AccountAction]
     public let actions: [Action]
-    public let depositActions: [DepositAction]
+    public let swapActions: [SwapAction]
+    public let swapClaimActions: [SwapClaimAction]
     public let genesisActions: [GenesisAction]
     public let peerActions: [PeerAction]
-    public let receiptActions: [ReceiptAction]
-    public let withdrawalActions: [WithdrawalAction]
+    public let settleActions: [SettleAction]
     public let signers: [String]
     public let fee: UInt64
     public let nonce: UInt64
 
-    public init(accountActions: [AccountAction], actions: [Action], depositActions: [DepositAction], genesisActions: [GenesisAction], peerActions: [PeerAction], receiptActions: [ReceiptAction], withdrawalActions: [WithdrawalAction], signers: [String], fee: UInt64, nonce: UInt64) {
+    public init(accountActions: [AccountAction], actions: [Action], swapActions: [SwapAction], swapClaimActions: [SwapClaimAction], genesisActions: [GenesisAction], peerActions: [PeerAction], settleActions: [SettleAction], signers: [String], fee: UInt64, nonce: UInt64) {
         self.accountActions = accountActions
         self.actions = actions
-        self.depositActions = depositActions
+        self.swapActions = swapActions
+        self.swapClaimActions = swapClaimActions
         self.genesisActions = genesisActions
         self.peerActions = peerActions
-        self.receiptActions = receiptActions
-        self.withdrawalActions = withdrawalActions
+        self.settleActions = settleActions
         self.signers = signers
         self.fee = fee
         self.nonce = nonce
     }
-    
-    func withdrawalsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
-        for withdrawal in withdrawalActions {
-            if withdrawal.amountWithdrawn > withdrawal.amountDemanded { return false }
-            if withdrawal.amountWithdrawn == 0 { return false }
+
+    func swapActionsAreValid() -> Bool {
+        let signerSet = Set(signers)
+        for swapAction in swapActions {
+            if swapAction.amount == 0 { return false }
+            if !signerSet.contains(swapAction.sender) { return false }
         }
-        async let proofOfDeposits = homestead.depositState.proveExistenceOfCorrespondingDeposit(withdrawalActions: withdrawalActions, fetcher: fetcher)
-        async let proofOfReceipts = await parentState.receiptState.proveExistenceOfCorrespondingReceipt(directory: directory, withdrawalActions: withdrawalActions, fetcher: fetcher)
-        let (_, _) = try await (proofOfDeposits, proofOfReceipts)
         return true
     }
-    
+
+    func settleActionsAreValid() -> Bool {
+        let signerSet = Set(signers)
+        for settleAction in settleActions {
+            if !signerSet.contains(settleAction.senderA) { return false }
+            if !signerSet.contains(settleAction.senderB) { return false }
+            guard let parsedKeyA = SwapKey(settleAction.swapKeyA) else { return false }
+            guard let parsedKeyB = SwapKey(settleAction.swapKeyB) else { return false }
+            if parsedKeyA.sender != settleAction.senderA { return false }
+            if parsedKeyB.sender != settleAction.senderB { return false }
+        }
+        return true
+    }
+
+    func swapClaimActionsAreValid() -> Bool {
+        let signerSet = Set(signers)
+        for swapClaimAction in swapClaimActions {
+            if swapClaimAction.amount == 0 { return false }
+            if swapClaimAction.isRefund {
+                if !signerSet.contains(swapClaimAction.sender) { return false }
+            } else {
+                if !signerSet.contains(swapClaimAction.recipient) { return false }
+            }
+        }
+        return true
+    }
+
+    func swapClaimsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
+        if swapClaimActions.isEmpty { return true }
+        for swapClaimAction in swapClaimActions {
+            if swapClaimAction.isRefund {
+                if blockIndex <= swapClaimAction.timelock { return false }
+            }
+        }
+        let claims = swapClaimActions.filter { !$0.isRefund }
+        if !claims.isEmpty {
+            let _ = try await parentState.settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
+        }
+        return true
+    }
+
+    func swapClaimsAreValidForNexus(directory: String, homestead: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
+        if swapClaimActions.isEmpty { return true }
+        for swapClaimAction in swapClaimActions {
+            if swapClaimAction.isRefund {
+                if blockIndex <= swapClaimAction.timelock { return false }
+            }
+        }
+        let claims = swapClaimActions.filter { !$0.isRefund }
+        if !claims.isEmpty {
+            let _ = try await homestead.settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
+        }
+        return true
+    }
+
     func genesisActionsAreValid(fetcher: Fetcher, parentSpec: ChainSpec? = nil) async throws -> Bool {
         return try await !genesisActions.concurrentMap { genesisAction in
             try await genesisAction.block.validateGenesis(fetcher: fetcher, directory: genesisAction.directory, parentSpec: parentSpec)
         }.contains(false)
     }
-    
+
     func accountActionsAreValid() -> Bool {
         let accountActionsThatRemoveFunds = accountActions.filter { $0.newBalance < $0.oldBalance }
         let signerSet = Set(signers)
@@ -52,19 +104,19 @@ public struct TransactionBody: Scalar {
         }
         return true
     }
-    
+
     func getStateDelta() throws -> Int {
         var delta = 0
         for a in accountActions { delta += a.stateDelta() }
         for a in actions { delta += a.stateDelta() }
-        for a in depositActions { delta += a.stateDelta() }
+        for a in swapActions { delta += a.stateDelta() }
+        for a in swapClaimActions { delta += a.stateDelta() }
         for a in genesisActions { delta += try a.stateDelta() }
         for a in peerActions { delta += a.stateDelta() }
-        for a in receiptActions { delta += a.stateDelta() }
-        for a in withdrawalActions { delta += a.stateDelta() }
+        for a in settleActions { delta += a.stateDelta() }
         return delta
     }
-    
+
     func verifyActionFilters(spec: ChainSpec) -> Bool {
         return actions.allSatisfy { $0.verifyFilters(spec: spec) }
     }

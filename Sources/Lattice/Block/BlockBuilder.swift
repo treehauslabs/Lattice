@@ -178,20 +178,20 @@ public struct BlockBuilder {
     ) async throws -> LatticeStateHeader {
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
         let allActions = transactionBodies.flatMap { $0.actions }
-        let allDepositActions = transactionBodies.flatMap { $0.depositActions }
+        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
+        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions }
         let allGenesisActions = transactionBodies.flatMap { $0.genesisActions }
         let allPeerActions = transactionBodies.flatMap { $0.peerActions }
-        let allReceiptActions = transactionBodies.flatMap { $0.receiptActions }
-        let allWithdrawalActions = transactionBodies.flatMap { $0.withdrawalActions }
+        let allSettleActions = transactionBodies.flatMap { $0.settleActions }
 
         let updatedState = try await state.proveAndUpdateState(
             allAccountActions: allAccountActions,
             allActions: allActions,
-            allDepositActions: allDepositActions,
+            allSwapActions: allSwapActions,
+            allSwapClaimActions: allSwapClaimActions,
             allGenesisActions: allGenesisActions,
             allPeerActions: allPeerActions,
-            allReceiptActions: allReceiptActions,
-            allWithdrawalActions: allWithdrawalActions,
+            allSettleActions: allSettleActions,
             transactionBodies: transactionBodies,
             fetcher: fetcher
         )
