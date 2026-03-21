@@ -55,24 +55,24 @@ public struct TransactionBody: Scalar {
     
     func getStateDelta() throws -> Int {
         var delta = 0
-        for a in accountActions { delta += try a.stateDelta() }
-        for a in actions { delta += try a.stateDelta() }
+        for a in accountActions { delta += a.stateDelta() }
+        for a in actions { delta += a.stateDelta() }
         for a in depositActions { delta += a.stateDelta() }
         for a in genesisActions { delta += try a.stateDelta() }
-        for a in peerActions { delta += try a.stateDelta() }
-        for a in receiptActions { delta += try a.stateDelta() }
-        for a in withdrawalActions { delta += try a.stateDelta() }
+        for a in peerActions { delta += a.stateDelta() }
+        for a in receiptActions { delta += a.stateDelta() }
+        for a in withdrawalActions { delta += a.stateDelta() }
         return delta
     }
     
     func verifyActionFilters(spec: ChainSpec) -> Bool {
         return actions.allSatisfy { $0.verifyFilters(spec: spec) }
     }
-    
+
     func verifyFilters(spec: ChainSpec) -> Bool {
         return spec.transactionFilters.allSatisfy { verifyFilter($0) }
     }
-    
+
     func verifyFilter(_ filter: String) -> Bool {
         guard let context = JSContext() else { return false }
         let encoder = JSONEncoder()
@@ -83,5 +83,46 @@ public struct TransactionBody: Scalar {
         guard let transactionFilter = context.objectForKeyedSubscript("transactionFilter") else { return false }
         guard let result = transactionFilter.call(withArguments: [transactionJSON]) else { return false }
         return result.isBoolean ? result.toBool() : false
+    }
+
+    static func batchVerifyFilters(bodies: [TransactionBody], spec: ChainSpec) -> Bool {
+        if spec.transactionFilters.isEmpty { return true }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let jsonStrings = bodies.compactMap { body -> String? in
+            guard let data = try? encoder.encode(body) else { return nil }
+            return String(bytes: data, encoding: .utf8)
+        }
+        if jsonStrings.count != bodies.count { return false }
+        for filter in spec.transactionFilters {
+            guard let context = JSContext() else { return false }
+            context.evaluateScript(filter)
+            guard let fn = context.objectForKeyedSubscript("transactionFilter") else { return false }
+            for json in jsonStrings {
+                guard let result = fn.call(withArguments: [json]) else { return false }
+                if !result.isBoolean || !result.toBool() { return false }
+            }
+        }
+        return true
+    }
+
+    static func batchVerifyActionFilters(bodies: [TransactionBody], spec: ChainSpec) -> Bool {
+        if spec.actionFilters.isEmpty { return true }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        for filter in spec.actionFilters {
+            guard let context = JSContext() else { return false }
+            context.evaluateScript(filter)
+            guard let fn = context.objectForKeyedSubscript("actionFilter") else { return false }
+            for body in bodies {
+                for action in body.actions {
+                    guard let data = try? encoder.encode(action) else { return false }
+                    guard let json = String(bytes: data, encoding: .utf8) else { return false }
+                    guard let result = fn.call(withArguments: [json]) else { return false }
+                    if !result.isBoolean || !result.toBool() { return false }
+                }
+            }
+        }
+        return true
     }
 }

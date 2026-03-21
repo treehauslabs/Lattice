@@ -8,10 +8,8 @@ public struct PeerAction: Codable, Sendable {
     public let fullNode: Bool
     public let type: PeerActionType
     
-    func stateDelta() throws -> Int {
-        guard let ownerKeyCount = owner.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        guard let ipAddressCount = IpAddress.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        return  ownerKeyCount + ipAddressCount + 13
+    func stateDelta() -> Int {
+        owner.utf8.count + IpAddress.utf8.count + 13
     }
     
     public func totalSize() -> Int? {

@@ -19,8 +19,8 @@ public struct AccountAction: Codable, Sendable {
         return true
     }
     
-    public func stateDelta() throws -> Int {
-        guard let ownerCount = owner.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
+    public func stateDelta() -> Int {
+        let ownerCount = owner.utf8.count
         if newBalance == 0 {
             return 0 - ownerCount - 8
         }

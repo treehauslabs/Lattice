@@ -31,9 +31,10 @@ public struct LatticeState: Node {
     public let withdrawalState: WithdrawalStateHeader
     public let transactionState: TransactionStateHeader
     
-    static func emptyState() -> Self {
-        return Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), depositState: DepositStateHeader(node: DepositState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), receiptState: ReceiptStateHeader(node: ReceiptState()), withdrawalState: WithdrawalStateHeader(node: WithdrawalState()), transactionState: TransactionStateHeader(node: TransactionState()))
-    }
+    static let empty = Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), depositState: DepositStateHeader(node: DepositState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), receiptState: ReceiptStateHeader(node: ReceiptState()), withdrawalState: WithdrawalStateHeader(node: WithdrawalState()), transactionState: TransactionStateHeader(node: TransactionState()))
+    static let emptyHeader = LatticeStateHeader(node: empty)
+
+    static func emptyState() -> Self { empty }
     
     public func get(property: PathSegment) -> (any cashew.Header)? {
         switch property {

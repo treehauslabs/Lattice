@@ -16,11 +16,8 @@ public struct ReceiptAction: Codable, Sendable {
         self.directory = directory
     }
     
-    func stateDelta() throws -> Int {
-        guard let withdrawerKeyCount = withdrawer.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        guard let demanderKeyCount = demander.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        guard let directoryCount = directory.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        return withdrawerKeyCount + demanderKeyCount + directoryCount + 24
+    func stateDelta() -> Int {
+        withdrawer.utf8.count + demander.utf8.count + directory.utf8.count + 24
     }
     
     public func totalSize() -> Int? {

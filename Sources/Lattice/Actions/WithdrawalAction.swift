@@ -18,10 +18,8 @@ public struct WithdrawalAction: Codable, Sendable {
         self.amountWithdrawn = amountWithdrawn
     }
     
-    func stateDelta() throws -> Int {
-        guard let withdrawerKeyCount = withdrawer.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        guard let demanderKeyCount = demander.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        return withdrawerKeyCount + demanderKeyCount + 32
+    func stateDelta() -> Int {
+        withdrawer.utf8.count + demander.utf8.count + 32
     }
     
     public func totalSize() -> Int? {

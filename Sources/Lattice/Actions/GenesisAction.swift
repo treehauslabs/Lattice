@@ -7,8 +7,6 @@ public struct GenesisAction: Codable, Sendable {
     public let block: Block
     
     func stateDelta() throws -> Int {
-        guard let directoryCount = directory.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        let genesisSize = try block.getGenesisSize()
-        return genesisSize + directoryCount
+        try block.getGenesisSize() + directory.utf8.count
     }
 }

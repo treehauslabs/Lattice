@@ -169,7 +169,7 @@ public actor ChainLevel {
         } else {
             if childBlock.index != 0 { return false }
             if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
-            let emptyState = LatticeStateHeader(node: LatticeState.emptyState())
+            let emptyState = LatticeState.emptyHeader
             if childBlock.homestead.rawCID != emptyState.rawCID { return false }
         }
 
@@ -178,18 +178,18 @@ public actor ChainLevel {
         let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
 
         if let specNode = childBlock.spec.node {
-            if !bodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
-            if !bodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
+            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: specNode) { return false }
         }
 
         if let parentSpecNode = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
-            if !bodies.allSatisfy({ $0.verifyFilters(spec: parentSpecNode) }) { return false }
-            if !bodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpecNode) }) { return false }
+            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: parentSpecNode) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: parentSpecNode) { return false }
         }
 
         for ancestorSpec in ancestorSpecs {
-            if !bodies.allSatisfy({ $0.verifyFilters(spec: ancestorSpec) }) { return false }
-            if !bodies.allSatisfy({ $0.verifyActionFilters(spec: ancestorSpec) }) { return false }
+            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: ancestorSpec) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { return false }
         }
 
         return true

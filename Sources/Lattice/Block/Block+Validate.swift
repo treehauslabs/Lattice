@@ -29,17 +29,17 @@ public extension Block {
         if previousBlock != nil { return false }
         if Int64(Date().timeIntervalSince1970 * 1000) < timestamp { return false }
         if index != 0 { return false }
-        if homestead.rawCID != LatticeStateHeader(node: LatticeState.emptyState()).rawCID { return false }
+        if homestead.rawCID != LatticeState.emptyHeader.rawCID { return false }
         guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
             try await tx.validateTransactionForGenesis(fetcher: fetcher)
         }) else { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
         if specNode.directory != directory { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
+        if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: specNode) { return false }
         if let parentSpec = parentSpec {
-            if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: parentSpec) }) { return false }
-            if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpec) }) { return false }
+            if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: parentSpec) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: parentSpec) { return false }
         }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
@@ -64,8 +64,8 @@ public extension Block {
         guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
             try await tx.validateTransactionForNexus(fetcher: fetcher)
         }) else { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
+        if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: specNode) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
@@ -105,10 +105,10 @@ public extension Block {
         let transactionBodiesMaybe = txs.map { $0.body.node }
         if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
         let transactionBodies = transactionBodiesMaybe.map { $0! }
-        if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: specNode) }) { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: specNode) }) { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyFilters(spec: parentSpecNode) }) { return false }
-        if !transactionBodies.allSatisfy({ $0.verifyActionFilters(spec: parentSpecNode) }) { return false }
+        if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: parentSpecNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: parentSpecNode) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }

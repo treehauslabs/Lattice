@@ -13,21 +13,15 @@ public struct Action: Codable, Sendable {
         self.newValue = newValue
     }
     
-    // WARNING: Should always run verify before this
-    public func stateDelta() throws -> Int {
+    public func stateDelta() -> Int {
+        let keyCount = key.utf8.count
         if oldValue == nil {
-            guard let newCount = newValue!.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-            guard let keyCount = key.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-            return newCount + keyCount
+            return newValue!.utf8.count + keyCount
         }
         if newValue == nil {
-            guard let oldCount = oldValue!.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-            guard let keyCount = key.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-            return 0 - oldCount - keyCount
+            return 0 - oldValue!.utf8.count - keyCount
         }
-        guard let oldCount = oldValue!.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        guard let newCount = newValue!.data(using: .utf8)?.count else { throw ValidationErrors.serializationError }
-        return newCount - oldCount
+        return newValue!.utf8.count - oldValue!.utf8.count
     }
     
     public func verify() -> Bool {

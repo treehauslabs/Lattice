@@ -49,7 +49,7 @@ public enum GenesisCeremony {
         guard block.previousBlock == nil else { return false }
         guard block.timestamp == config.timestamp else { return false }
         guard block.spec.node != nil else { return false }
-        let emptyState = LatticeStateHeader(node: LatticeState.emptyState())
+        let emptyState = LatticeState.emptyHeader
         guard block.homestead.rawCID == emptyState.rawCID else { return false }
         return true
     }

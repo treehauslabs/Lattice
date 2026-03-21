@@ -570,11 +570,7 @@ public actor ChainState {
     // MARK: - Index Management
 
     func addToBlockIndex(hash: String, blockIndex: UInt64) {
-        if indexToBlockHash[blockIndex] != nil {
-            indexToBlockHash[blockIndex]!.insert(hash)
-        } else {
-            indexToBlockHash[blockIndex] = Set([hash])
-        }
+        indexToBlockHash[blockIndex, default: []].insert(hash)
     }
 
     func findChildren(hash: String, blockIndex: UInt64) -> [String] {
