@@ -3,6 +3,11 @@ import cashew
 let TRANSACTION_BODY_PROPERTY = "body"
 let TRANSACTION_PROPERTIES = Set([TRANSACTION_BODY_PROPERTY])
 
+struct SignatureEntry: Codable {
+    let key: String
+    let value: String
+}
+
 public struct Transaction {
     public let signatures: [String: String]
     public let body: HeaderImpl<TransactionBody>
@@ -10,6 +15,25 @@ public struct Transaction {
     public init(signatures: [String: String], body: HeaderImpl<TransactionBody>) {
         self.signatures = signatures
         self.body = body
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case signatures, body
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let sortedSigs = signatures.sorted { $0.key < $1.key }
+            .map { SignatureEntry(key: $0.key, value: $0.value) }
+        try container.encode(sortedSigs, forKey: .signatures)
+        try container.encode(body, forKey: .body)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let entries = try container.decode([SignatureEntry].self, forKey: .signatures)
+        signatures = Dictionary(uniqueKeysWithValues: entries.map { ($0.key, $0.value) })
+        body = try container.decode(HeaderImpl<TransactionBody>.self, forKey: .body)
     }
 
     func signaturesAreValid() -> Bool {
