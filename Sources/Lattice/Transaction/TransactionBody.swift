@@ -1,6 +1,7 @@
 import cashew
 import CollectionConcurrencyKit
-import JavaScriptCore
+import Foundation
+import JXKit
 
 public struct TransactionBody: Scalar {
     public let accountActions: [AccountAction]
@@ -128,15 +129,19 @@ public struct TransactionBody: Scalar {
     }
 
     func verifyFilter(_ filter: String) -> Bool {
-        guard let context = JSContext() else { return false }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let transactionData = try? encoder.encode(self) else { return false }
-        guard let transactionJSON = String(bytes: transactionData, encoding: .utf8) else { return false }
-        context.evaluateScript(filter)
-        guard let transactionFilter = context.objectForKeyedSubscript("transactionFilter") else { return false }
-        guard let result = transactionFilter.call(withArguments: [transactionJSON]) else { return false }
-        return result.isBoolean ? result.toBool() : false
+        do {
+            let context = JXContext()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            guard let transactionData = try? encoder.encode(self) else { return false }
+            guard let transactionJSON = String(bytes: transactionData, encoding: .utf8) else { return false }
+            try context.eval(filter)
+            let fn = try context.global["transactionFilter"]
+            let result = try fn.call(withArguments: [context.string(transactionJSON)])
+            return try result.isBoolean ? result.bool : false
+        } catch {
+            return false
+        }
     }
 
     static func batchVerifyFilters(bodies: [TransactionBody], spec: ChainSpec) -> Bool {
@@ -148,14 +153,18 @@ public struct TransactionBody: Scalar {
             return String(bytes: data, encoding: .utf8)
         }
         if jsonStrings.count != bodies.count { return false }
-        for filter in spec.transactionFilters {
-            guard let context = JSContext() else { return false }
-            context.evaluateScript(filter)
-            guard let fn = context.objectForKeyedSubscript("transactionFilter") else { return false }
-            for json in jsonStrings {
-                guard let result = fn.call(withArguments: [json]) else { return false }
-                if !result.isBoolean || !result.toBool() { return false }
+        do {
+            for filter in spec.transactionFilters {
+                let context = JXContext()
+                try context.eval(filter)
+                let fn = try context.global["transactionFilter"]
+                for json in jsonStrings {
+                    let result = try fn.call(withArguments: [context.string(json)])
+                    if try !result.isBoolean || !result.bool { return false }
+                }
             }
+        } catch {
+            return false
         }
         return true
     }
@@ -164,18 +173,22 @@ public struct TransactionBody: Scalar {
         if spec.actionFilters.isEmpty { return true }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        for filter in spec.actionFilters {
-            guard let context = JSContext() else { return false }
-            context.evaluateScript(filter)
-            guard let fn = context.objectForKeyedSubscript("actionFilter") else { return false }
-            for body in bodies {
-                for action in body.actions {
-                    guard let data = try? encoder.encode(action) else { return false }
-                    guard let json = String(bytes: data, encoding: .utf8) else { return false }
-                    guard let result = fn.call(withArguments: [json]) else { return false }
-                    if !result.isBoolean || !result.toBool() { return false }
+        do {
+            for filter in spec.actionFilters {
+                let context = JXContext()
+                try context.eval(filter)
+                let fn = try context.global["actionFilter"]
+                for body in bodies {
+                    for action in body.actions {
+                        guard let data = try? encoder.encode(action) else { return false }
+                        guard let json = String(bytes: data, encoding: .utf8) else { return false }
+                        let result = try fn.call(withArguments: [context.string(json)])
+                        if try !result.isBoolean || !result.bool { return false }
+                    }
                 }
             }
+        } catch {
+            return false
         }
         return true
     }

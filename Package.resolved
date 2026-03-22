@@ -1,5 +1,5 @@
 {
-  "originHash" : "20a93a957b3991dcd6ccabcf9b4e76c9f8ae5476dc5fd4c3f03cef5c4a9904a7",
+  "originHash" : "e2451d0dd4804212c6852706ec46146e005c477d142b24f2a53185e2b779b0c2",
   "pins" : [
     {
       "identity" : "arraytrie",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/treehauslabs/cashew.git",
       "state" : {
-        "branch" : "master",
-        "revision" : "d4620d32c6625b9db86643ddf60c1aba2d5d7eae"
+        "revision" : "d4620d32c6625b9db86643ddf60c1aba2d5d7eae",
+        "version" : "1.0.0"
       }
     },
     {
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
         "version" : "1.9.0"
+      }
+    },
+    {
+      "identity" : "jxkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jectivex/JXKit.git",
+      "state" : {
+        "revision" : "a4c1872d36036fe4ade4b1cadb268603e89e25f0",
+        "version" : "3.6.0"
       }
     },
     {

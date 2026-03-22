@@ -1,6 +1,6 @@
 import cashew
 import Foundation
-import JavaScriptCore
+import JXKit
 
 public struct Action: Codable, Sendable {
     public let key: String
@@ -45,14 +45,18 @@ public struct Action: Codable, Sendable {
     }
 
     func verifyFilter(_ filter: String) -> Bool {
-        guard let context = JSContext() else { return false }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let actionData = try? encoder.encode(self) else { return false }
-        guard let actionJson = String(bytes: actionData, encoding: .utf8) else { return false }
-        context.evaluateScript(filter)
-        guard let transactionFilter = context.objectForKeyedSubscript("actionFilter") else { return false }
-        guard let result = transactionFilter.call(withArguments: [actionJson]) else { return false }
-        return result.isBoolean ? result.toBool() : false
+        do {
+            let context = JXContext()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            guard let actionData = try? encoder.encode(self) else { return false }
+            guard let actionJson = String(bytes: actionData, encoding: .utf8) else { return false }
+            try context.eval(filter)
+            let fn = try context.global["actionFilter"]
+            let result = try fn.call(withArguments: [context.string(actionJson)])
+            return try result.isBoolean ? result.bool : false
+        } catch {
+            return false
+        }
     }
 }

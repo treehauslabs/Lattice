@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/treehauslabs/UInt256.git", from: "1.0.0"),
         .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1"),
         .package(url: "https://github.com/JohnSundell/CollectionConcurrencyKit.git", from: "0.2.0"),
+        .package(url: "https://github.com/jectivex/JXKit.git", from: "3.6.0"),
     ],
     targets: [
         .target(
@@ -30,6 +31,7 @@ let package = Package(
                 .product(name: "CID", package: "swift-cid"),
                 .product(name: "UInt256", package: "UInt256"),
                 .product(name: "CollectionConcurrencyKit", package: "CollectionConcurrencyKit"),
+                .product(name: "JXKit", package: "JXKit"),
             ]),
         .executableTarget(
             name: "LatticeDemo",
