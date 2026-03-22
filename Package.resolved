@@ -1,5 +1,5 @@
 {
-  "originHash" : "807bc3884cc428321088711da67c2a674fde6ea08b12476c6b91d333f03b0f97",
+  "originHash" : "15be4d4d9cd74ae7abd5511deb0ac29e836bd1944bca682578849fdd9556cb28",
   "pins" : [
     {
       "identity" : "arraytrie",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/treehauslabs/cashew.git",
       "state" : {
-        "revision" : "393a130bafcaf38550730ee44d594dfb2da44d59",
-        "version" : "1.1.0"
+        "revision" : "cd72fdf8d6a12c082df31ca377592a42add0544c",
+        "version" : "1.2.0"
       }
     },
     {
