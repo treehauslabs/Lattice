@@ -192,7 +192,7 @@ public extension Block {
         let expected = spec.calculateMinimumDifficulty(previousDifficulty: difficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
         let maxDifficultyChange = UInt256(ChainSpec.maxDifficultyChange)
         let lowerBound = expected / maxDifficultyChange
-        let upperBound = expected * maxDifficultyChange
+        let upperBound = expected <= UInt256.max / maxDifficultyChange ? expected * maxDifficultyChange : UInt256.max
         return nextDifficulty >= lowerBound && nextDifficulty <= upperBound
     }
 
