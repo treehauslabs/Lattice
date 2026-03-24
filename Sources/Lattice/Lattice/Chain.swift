@@ -1,7 +1,7 @@
 import cashew
 import UInt256
 
-public let RECENT_BLOCK_DISTANCE: UInt64 = 1000
+public let RECENT_BLOCK_DISTANCE: UInt64 = UInt64.max
 public typealias BlockHeader = HeaderImpl<Block>
 
 // MARK: - Protocols
