@@ -311,7 +311,8 @@ public actor ChainState {
     ) -> SubmissionResult {
         let blockHash = blockHeader.rawCID
 
-        if block.index + retentionDepth < highestBlockIndex {
+        let (indexPlusRetention, overflow1) = block.index.addingReportingOverflow(retentionDepth)
+        if !overflow1 && indexPlusRetention < highestBlockIndex {
             return .discarded()
         }
         if parentBlockHeaderAndIndex == nil && block.previousBlock == nil {
@@ -401,8 +402,9 @@ public actor ChainState {
             return .extendsMainChain()
         }
 
+        let (idxPlusRet, ovf) = block.index.addingReportingOverflow(retentionDepth)
         if hashToBlock[previousBlockCID] == nil
-            && block.index + retentionDepth > highestBlockIndex
+            && (ovf || idxPlusRet > highestBlockIndex)
         {
             missingBlockHashes.insert(previousBlockCID)
             return SubmissionResult(
