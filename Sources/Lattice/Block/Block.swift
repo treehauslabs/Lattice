@@ -15,6 +15,7 @@ let CHILD_BLOCKS_PROPERTY = "childBlocks"
 let BLOCK_PROPERTIES = Set([PREVIOUS_BLOCK_PROPERTY, TRANSACTIONS_PROPERTY, SPEC_PROPERTY, PARENT_HOMESTEAD_PROPERTY, HOMESTEAD_PROPERTY, FRONTIER_PROPERTY, CHILD_BLOCKS_PROPERTY])
 
 public struct Block: Hashable {
+    public let version: UInt16
     public let previousBlock: HeaderImpl<Block>?
     public let transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>
     public let difficulty: UInt256
@@ -28,7 +29,8 @@ public struct Block: Hashable {
     public let timestamp: Int64
     public let nonce: UInt64
 
-    public init(previousBlock: HeaderImpl<Block>?, transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: UInt256, nextDifficulty: UInt256, spec: HeaderImpl<ChainSpec>, parentHomestead: LatticeStateHeader, homestead: LatticeStateHeader, frontier: LatticeStateHeader, childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: UInt64, timestamp: Int64, nonce: UInt64) {
+    public init(version: UInt16 = 1, previousBlock: HeaderImpl<Block>?, transactions: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: UInt256, nextDifficulty: UInt256, spec: HeaderImpl<ChainSpec>, parentHomestead: LatticeStateHeader, homestead: LatticeStateHeader, frontier: LatticeStateHeader, childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: UInt64, timestamp: Int64, nonce: UInt64) {
+        self.version = version
         self.previousBlock = previousBlock
         self.transactions = transactions
         self.difficulty = difficulty
@@ -50,6 +52,7 @@ public struct Block: Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
+        hasher.combine(version)
         hasher.combine(difficulty)
         hasher.combine(index)
         hasher.combine(timestamp)
@@ -147,7 +150,7 @@ extension Block: Node {
     }
 
     public func set(properties: [PathSegment : any cashew.Header]) -> Block {
-        return Block(previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
+        return Block(version: version, previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? HeaderImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
     }
 }
 

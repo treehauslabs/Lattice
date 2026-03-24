@@ -19,6 +19,7 @@ public struct BlockBuilder {
         timestamp: Int64,
         difficulty: UInt256,
         nonce: UInt64 = 0,
+        version: UInt16 = 1,
         fetcher: Fetcher
     ) async throws -> Block {
         let emptyState = LatticeState.emptyState()
@@ -32,6 +33,7 @@ public struct BlockBuilder {
         )
 
         return Block(
+            version: version,
             previousBlock: nil,
             transactions: buildTransactionsDictionary(transactions),
             difficulty: difficulty,
@@ -79,6 +81,7 @@ public struct BlockBuilder {
         )
 
         return Block(
+            version: previous.version,
             previousBlock: HeaderImpl<Block>(node: previous),
             transactions: buildTransactionsDictionary(transactions),
             difficulty: blockDifficulty,
