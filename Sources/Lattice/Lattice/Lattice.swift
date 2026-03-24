@@ -19,6 +19,7 @@ public actor Lattice {
 
     public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
         if await nexus.chain.contains(blockHash: blockHeader.rawCID) { return false }
+        
         guard let resolvedBlock = try? await blockHeader.resolve(fetcher: fetcher).node else { return false }
         guard let validated = try? await resolvedBlock.validateNexus(fetcher: fetcher) else { return false }
         if !validated { return false }
@@ -63,9 +64,9 @@ public actor ChainLevel {
 
     // MARK: - Child Chain Management
 
-    public func subscribe(to directory: String, genesisBlock: Block) {
+    public func subscribe(to directory: String, genesisBlock: Block, retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE) {
         guard children[directory] == nil else { return }
-        let childChain = ChainState.fromGenesis(block: genesisBlock)
+        let childChain = ChainState.fromGenesis(block: genesisBlock, retentionDepth: retentionDepth)
         let childLevel = ChainLevel(chain: childChain, children: [:])
         children[directory] = childLevel
     }

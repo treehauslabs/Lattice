@@ -56,7 +56,13 @@ public actor Mempool {
     }
 
     public func totalFees() -> UInt64 {
-        pending.values.reduce(0) { $0 + $1.fee }
+        var total: UInt64 = 0
+        for entry in pending.values {
+            let (newTotal, overflow) = total.addingReportingOverflow(entry.fee)
+            if overflow { return UInt64.max }
+            total = newTotal
+        }
+        return total
     }
 
     private func evictLowestFee() {

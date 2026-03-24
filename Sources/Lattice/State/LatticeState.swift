@@ -68,10 +68,3 @@ public struct LatticeState: Node {
 }
 
 public typealias LatticeStateHeader = HeaderImpl<LatticeState>
-
-public extension LatticeStateHeader {
-    func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allSettleActions: [SettleAction], fetcher: Fetcher) async throws -> LatticeStateHeader {
-        let resolvedHeader = try await resolve(fetcher: fetcher)
-        return try await resolvedHeader.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allSettleActions: allSettleActions, fetcher: fetcher)
-    }
-}
