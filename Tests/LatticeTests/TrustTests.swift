@@ -711,11 +711,11 @@ final class ReorgBalanceTests: XCTestCase {
         XCTAssertTrue(mainValid)
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: mainBlock1), block: mainBlock1
+            blockHeader: VolumeImpl<Block>(node: mainBlock1), block: mainBlock1
         )
 
         let mainTip = await chain.getMainChainTip()
-        XCTAssertEqual(mainTip, HeaderImpl<Block>(node: mainBlock1).rawCID)
+        XCTAssertEqual(mainTip, VolumeImpl<Block>(node: mainBlock1).rawCID)
 
         // Fork: 3 empty blocks from genesis (longer chain, triggers reorg)
         var forkPrev = genesis
@@ -726,13 +726,13 @@ final class ReorgBalanceTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             forkPrev = b
         }
 
         let newTip = await chain.getMainChainTip()
-        XCTAssertEqual(newTip, HeaderImpl<Block>(node: forkPrev).rawCID)
+        XCTAssertEqual(newTip, VolumeImpl<Block>(node: forkPrev).rawCID)
         XCTAssertNotEqual(newTip, mainTip, "Reorg should have switched main chain")
 
         // After reorg: the transfer block is no longer on main chain
@@ -1040,7 +1040,7 @@ final class ConcurrentBlockTests: XCTestCase {
                 group.addTask {
                     let _ = await chain.submitBlock(
                         parentBlockHeaderAndIndex: nil,
-                        blockHeader: HeaderImpl<Block>(node: block), block: block
+                        blockHeader: VolumeImpl<Block>(node: block), block: block
                     )
                 }
             }

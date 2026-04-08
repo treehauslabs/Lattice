@@ -82,7 +82,7 @@ public struct BlockBuilder {
 
         return Block(
             version: previous.version,
-            previousBlock: HeaderImpl<Block>(node: previous),
+            previousBlock: VolumeImpl<Block>(node: previous),
             transactions: buildTransactionsDictionary(transactions),
             difficulty: blockDifficulty,
             nextDifficulty: blockNextDifficulty,
@@ -206,16 +206,16 @@ public struct BlockBuilder {
 
     static func buildTransactionsDictionary(
         _ transactions: [Transaction]
-    ) -> HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>> {
+    ) -> HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>> {
         if transactions.isEmpty {
-            return HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>(
-                node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()
+            return HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>(
+                node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()
             )
         }
 
-        var dict = MerkleDictionaryImpl<HeaderImpl<Transaction>>()
+        var dict = MerkleDictionaryImpl<VolumeImpl<Transaction>>()
         for (i, tx) in transactions.enumerated() {
-            let txHeader = HeaderImpl<Transaction>(node: tx)
+            let txHeader = VolumeImpl<Transaction>(node: tx)
             dict = (try? dict.inserting(key: String(i), value: txHeader)) ?? dict
         }
         return HeaderImpl(node: dict)
@@ -223,16 +223,16 @@ public struct BlockBuilder {
 
     static func buildChildBlocksDictionary(
         _ childBlocks: [String: Block]
-    ) -> HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>> {
+    ) -> HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>> {
         if childBlocks.isEmpty {
-            return HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>(
-                node: MerkleDictionaryImpl<HeaderImpl<Block>>()
+            return HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>(
+                node: MerkleDictionaryImpl<VolumeImpl<Block>>()
             )
         }
 
-        var dict = MerkleDictionaryImpl<HeaderImpl<Block>>()
+        var dict = MerkleDictionaryImpl<VolumeImpl<Block>>()
         for (directory, block) in childBlocks {
-            let blockHeader = HeaderImpl<Block>(node: block)
+            let blockHeader = VolumeImpl<Block>(node: block)
             dict = (try? dict.inserting(key: directory, value: blockHeader)) ?? dict
         }
         return HeaderImpl(node: dict)

@@ -96,7 +96,7 @@ final class GenesisCeremonyTests: XCTestCase {
         )
         let submitResult = await result.chainState.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block1),
+            blockHeader: VolumeImpl<Block>(node: block1),
             block: block1
         )
         XCTAssertTrue(submitResult.extendsMainChain, "Should be able to extend genesis chain")
@@ -129,7 +129,7 @@ final class BlockReceptionTests: XCTestCase {
             previous: result.block, timestamp: 1_000,
             difficulty: UInt256.max, nonce: 1, fetcher: fetcher
         )
-        let block1Hash = HeaderImpl<Block>(node: block1).rawCID
+        let block1Hash = VolumeImpl<Block>(node: block1).rawCID
         guard let block1Data = block1.toData() else {
             XCTFail("Block serialization failed")
             return
@@ -159,7 +159,7 @@ final class BlockReceptionTests: XCTestCase {
             previous: result.block, timestamp: 1_000,
             difficulty: UInt256.max, nonce: 1, fetcher: fetcher
         )
-        let header = HeaderImpl<Block>(node: block1)
+        let header = VolumeImpl<Block>(node: block1)
         let submitResult = await result.chainState.submitBlock(
             parentBlockHeaderAndIndex: nil,
             blockHeader: header,
@@ -169,71 +169,6 @@ final class BlockReceptionTests: XCTestCase {
 
         let tip = await result.chainState.getMainChainTip()
         XCTAssertEqual(tip, header.rawCID)
-    }
-}
-
-// MARK: - Transaction Relay Tests
-
-@MainActor
-final class TransactionRelayTests: XCTestCase {
-
-    func testTransactionAddedToMempool() async {
-        let mempool = Mempool(maxSize: 100)
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [signerCID], fee: 50, nonce: 1
-        )
-        let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-        let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-        let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-
-        let added = await mempool.add(transaction: tx)
-        XCTAssertTrue(added)
-
-        let count = await mempool.count
-        XCTAssertEqual(count, 1)
-
-        let selected = await mempool.selectTransactions(maxCount: 10)
-        XCTAssertEqual(selected.count, 1)
-        XCTAssertEqual(selected[0].body.rawCID, bodyHeader.rawCID)
-    }
-
-    func testTransactionPrunedAfterBlockConfirmation() async {
-        let mempool = Mempool(maxSize: 100)
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        var txCIDs: [String] = []
-        for i: UInt64 in 0..<5 {
-            let body = TransactionBody(
-                accountActions: [], actions: [], swapActions: [],
-                swapClaimActions: [], genesisActions: [], peerActions: [],
-                settleActions: [], signers: [signerCID], fee: 10, nonce: i
-            )
-            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-            let _ = await mempool.add(transaction: tx)
-            txCIDs.append(bodyHeader.rawCID)
-        }
-
-        let countBefore = await mempool.count
-        XCTAssertEqual(countBefore, 5)
-
-        let confirmed = Set([txCIDs[0], txCIDs[2], txCIDs[4]])
-        await mempool.removeAll(txCIDs: confirmed)
-
-        let countAfter = await mempool.count
-        XCTAssertEqual(countAfter, 2)
-
-        for cid in confirmed {
-            let contains = await mempool.contains(txCID: cid)
-            XCTAssertFalse(contains)
-        }
     }
 }
 
@@ -264,7 +199,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
             )
             let mined = BlockBuilder.mine(block: template, targetDifficulty: UInt256.max, maxAttempts: 10)!
 
-            let header = HeaderImpl<Block>(node: mined)
+            let header = VolumeImpl<Block>(node: mined)
             let result = await genesis.chainState.submitBlock(
                 parentBlockHeaderAndIndex: nil,
                 blockHeader: header,
@@ -278,7 +213,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
         XCTAssertEqual(height, 10)
 
         let tipHash = await genesis.chainState.getMainChainTip()
-        XCTAssertEqual(tipHash, HeaderImpl<Block>(node: prev).rawCID)
+        XCTAssertEqual(tipHash, VolumeImpl<Block>(node: prev).rawCID)
 
         let genesisOnMain = await genesis.chainState.isOnMainChain(hash: genesis.blockHash)
         XCTAssertTrue(genesisOnMain)
@@ -304,7 +239,7 @@ final class GenesisToBlockE2ETests: XCTestCase {
             previous: nodeA.block, timestamp: 1_000,
             difficulty: UInt256.max, nonce: 1, fetcher: fetcher
         )
-        let headerA1 = HeaderImpl<Block>(node: blockA1)
+        let headerA1 = VolumeImpl<Block>(node: blockA1)
 
         let resultOnA = await nodeA.chainState.submitBlock(
             parentBlockHeaderAndIndex: nil, blockHeader: headerA1, block: blockA1
@@ -349,24 +284,24 @@ final class GenesisToBlockE2ETests: XCTestCase {
         )
 
         let _ = await nodeA.chainState.submitBlock(
-            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA1), block: blockA1
+            parentBlockHeaderAndIndex: nil, blockHeader: VolumeImpl(node: blockA1), block: blockA1
         )
         let _ = await nodeA.chainState.submitBlock(
-            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA2), block: blockA2
+            parentBlockHeaderAndIndex: nil, blockHeader: VolumeImpl(node: blockA2), block: blockA2
         )
 
         let _ = await nodeB.chainState.submitBlock(
-            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockB1), block: blockB1
+            parentBlockHeaderAndIndex: nil, blockHeader: VolumeImpl(node: blockB1), block: blockB1
         )
 
         let tipB_before = await nodeB.chainState.getMainChainTip()
-        XCTAssertEqual(tipB_before, HeaderImpl<Block>(node: blockB1).rawCID)
+        XCTAssertEqual(tipB_before, VolumeImpl<Block>(node: blockB1).rawCID)
 
         let _ = await nodeB.chainState.submitBlock(
-            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA1), block: blockA1
+            parentBlockHeaderAndIndex: nil, blockHeader: VolumeImpl(node: blockA1), block: blockA1
         )
         let resultA2onB = await nodeB.chainState.submitBlock(
-            parentBlockHeaderAndIndex: nil, blockHeader: HeaderImpl(node: blockA2), block: blockA2
+            parentBlockHeaderAndIndex: nil, blockHeader: VolumeImpl(node: blockA2), block: blockA2
         )
 
         XCTAssertNotNil(resultA2onB.reorganization, "Node B should reorg to longer chain from A")

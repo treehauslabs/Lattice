@@ -38,7 +38,7 @@ private func next(_ previous: Block, ts: Int64, nonce: UInt64 = 0) async throws 
     )
 }
 
-private func header(_ block: Block) -> BlockHeader { HeaderImpl<Block>(node: block) }
+private func header(_ block: Block) -> BlockHeader { VolumeImpl<Block>(node: block) }
 
 private func buildChain(length: Int, startTimestamp: Int64 = 1_000_000) async throws -> [Block] {
     var blocks: [Block] = [try await genesis(timestamp: startTimestamp)]
@@ -163,13 +163,13 @@ final class BalanceConservationTests: XCTestCase {
     func testCannotCreateMoneyFromNothing() throws {
         let g = Block(
             previousBlock: nil,
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: HeaderImpl(node: spec()),
             parentHomestead: LatticeStateHeader(node: LatticeState.emptyState()),
             homestead: LatticeStateHeader(node: LatticeState.emptyState()),
             frontier: LatticeStateHeader(node: LatticeState.emptyState()),
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 0, timestamp: 1_000_000, nonce: 0
         )
         let accountActions = [AccountAction(owner: "miner", oldBalance: 0, newBalance: 999_999_999)]
@@ -182,13 +182,13 @@ final class BalanceConservationTests: XCTestCase {
     func testRewardPlusFeesCappedCorrectly() throws {
         let g = Block(
             previousBlock: nil,
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: HeaderImpl(node: spec()),
             parentHomestead: LatticeStateHeader(node: LatticeState.emptyState()),
             homestead: LatticeStateHeader(node: LatticeState.emptyState()),
             frontier: LatticeStateHeader(node: LatticeState.emptyState()),
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 1, timestamp: 2_000_000, nonce: 0
         )
         let s = spec()
@@ -223,14 +223,14 @@ final class BlockValidationAdversarialTests: XCTestCase {
     func testBlockWithWrongIndexRejected() async throws {
         let g = try await genesis()
         let wrongIndex = Block(
-            previousBlock: HeaderImpl(node: g),
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            previousBlock: VolumeImpl(node: g),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: g.spec,
             parentHomestead: LatticeStateHeader(node: LatticeState.emptyState()),
             homestead: g.frontier,
             frontier: g.frontier,
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 5, timestamp: 2_000_000, nonce: 0
         )
         XCTAssertFalse(wrongIndex.validateIndex(previousBlock: g), "Non-sequential index must fail")
@@ -239,14 +239,14 @@ final class BlockValidationAdversarialTests: XCTestCase {
     func testBlockWithPastTimestampRejected() async throws {
         let g = try await genesis(timestamp: 5_000_000)
         let pastBlock = Block(
-            previousBlock: HeaderImpl(node: g),
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            previousBlock: VolumeImpl(node: g),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: g.spec,
             parentHomestead: LatticeStateHeader(node: LatticeState.emptyState()),
             homestead: g.frontier,
             frontier: g.frontier,
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 1, timestamp: 4_000_000, nonce: 0
         )
         XCTAssertFalse(pastBlock.validateTimestamp(previousBlock: g), "Timestamp before parent must fail")
@@ -262,14 +262,14 @@ final class BlockValidationAdversarialTests: XCTestCase {
             initialReward: 32, halvingInterval: 10_000
         )
         let wrongSpec = Block(
-            previousBlock: HeaderImpl(node: g),
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            previousBlock: VolumeImpl(node: g),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: HeaderImpl(node: differentSpec),
             parentHomestead: LatticeStateHeader(node: LatticeState.emptyState()),
             homestead: g.frontier,
             frontier: g.frontier,
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 1, timestamp: 2_000_000, nonce: 0
         )
         XCTAssertFalse(wrongSpec.validateSpec(previousBlock: g), "Changed spec must fail")
@@ -279,14 +279,14 @@ final class BlockValidationAdversarialTests: XCTestCase {
         let g = try await genesis()
         let wrongState = LatticeStateHeader(node: LatticeState.emptyState())
         let b = Block(
-            previousBlock: HeaderImpl(node: g),
-            transactions: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>()),
+            previousBlock: VolumeImpl(node: g),
+            transactions: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>()),
             difficulty: UInt256(1000), nextDifficulty: UInt256(1000),
             spec: g.spec,
             parentHomestead: wrongState,
             homestead: wrongState,
             frontier: wrongState,
-            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<HeaderImpl<Block>>()),
+            childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 1, timestamp: 2_000_000, nonce: 0
         )
         let stateValid = b.validateState(previousBlock: g)

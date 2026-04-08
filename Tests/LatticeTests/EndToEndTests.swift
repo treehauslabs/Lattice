@@ -5,12 +5,12 @@ import cashew
 
 // MARK: - Block Construction Helpers
 
-func emptyTransactions() -> HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>> {
-    HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Transaction>>>(node: MerkleDictionaryImpl<HeaderImpl<Transaction>>())
+func emptyTransactions() -> HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>> {
+    HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>(node: MerkleDictionaryImpl<VolumeImpl<Transaction>>())
 }
 
-func emptyChildBlocks() -> HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>> {
-    HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>(node: MerkleDictionaryImpl<HeaderImpl<Block>>())
+func emptyChildBlocks() -> HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>> {
+    HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>(node: MerkleDictionaryImpl<VolumeImpl<Block>>())
 }
 
 func emptyLatticeState() -> LatticeStateHeader {
@@ -58,9 +58,9 @@ func makeBlock(
     timestamp: Int64,
     difficulty: UInt256 = UInt256(1000),
     nonce: UInt64 = 0,
-    childBlocks: HeaderImpl<MerkleDictionaryImpl<HeaderImpl<Block>>>? = nil
+    childBlocks: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>? = nil
 ) -> Block {
-    let prevHeader = HeaderImpl<Block>(node: previous)
+    let prevHeader = VolumeImpl<Block>(node: previous)
     let emptyState = emptyLatticeState()
     return Block(
         previousBlock: prevHeader,
@@ -79,7 +79,7 @@ func makeBlock(
 }
 
 func blockHeader(_ block: Block) -> BlockHeader {
-    HeaderImpl<Block>(node: block)
+    VolumeImpl<Block>(node: block)
 }
 
 // MARK: - End-to-End: Block Construction and CID

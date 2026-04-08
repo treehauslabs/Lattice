@@ -86,7 +86,7 @@ final class BlockBuilderTests: XCTestCase {
         XCTAssertEqual(block1.homestead.rawCID, genesis.frontier.rawCID)
         XCTAssertEqual(block1.index, 1)
         XCTAssertNotNil(block1.previousBlock)
-        XCTAssertEqual(block1.previousBlock?.rawCID, HeaderImpl<Block>(node: genesis).rawCID)
+        XCTAssertEqual(block1.previousBlock?.rawCID, VolumeImpl<Block>(node: genesis).rawCID)
     }
 
     func testBuildBlockPreservesSpec() async throws {
@@ -102,8 +102,8 @@ final class BlockBuilderTests: XCTestCase {
         let block1a = try await nextBlock(previous: genesis, timestamp: 2_000_000, nonce: 1)
         let block1b = try await nextBlock(previous: genesis, timestamp: 2_000_000, nonce: 2)
         XCTAssertNotEqual(
-            HeaderImpl<Block>(node: block1a).rawCID,
-            HeaderImpl<Block>(node: block1b).rawCID
+            VolumeImpl<Block>(node: block1a).rawCID,
+            VolumeImpl<Block>(node: block1b).rawCID
         )
     }
 
@@ -145,7 +145,7 @@ final class BlockBuilderSubmissionTests: XCTestCase {
         var ts: Int64 = 2_000_000
         for i in 1...10 {
             let block = try await nextBlock(previous: prev, timestamp: ts, nonce: UInt64(i))
-            let header = HeaderImpl<Block>(node: block)
+            let header = VolumeImpl<Block>(node: block)
             let result = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
                 blockHeader: header,
@@ -170,7 +170,7 @@ final class BlockBuilderSubmissionTests: XCTestCase {
             let block = try await nextBlock(previous: mainPrev, timestamp: ts, nonce: UInt64(i))
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block),
+                blockHeader: VolumeImpl<Block>(node: block),
                 block: block
             )
             mainPrev = block
@@ -188,7 +188,7 @@ final class BlockBuilderSubmissionTests: XCTestCase {
             let block = try await nextBlock(previous: forkPrev, timestamp: ts, nonce: UInt64(100 + i))
             let result = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block),
+                blockHeader: VolumeImpl<Block>(node: block),
                 block: block
             )
             if result.reorganization != nil { sawReorg = true }
@@ -481,13 +481,13 @@ final class MissingBlockTrackingTests: XCTestCase {
 
         let result = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block2),
+            blockHeader: VolumeImpl<Block>(node: block2),
             block: block2
         )
         XCTAssertTrue(result.needsChildBlock, "Block with missing parent should flag needsChildBlock")
 
         let missing = await chain.getMissingBlockHashes()
-        let block1Hash = HeaderImpl<Block>(node: block1).rawCID
+        let block1Hash = VolumeImpl<Block>(node: block1).rawCID
         XCTAssertTrue(missing.contains(block1Hash), "Missing parent should be tracked")
     }
 
@@ -500,7 +500,7 @@ final class MissingBlockTrackingTests: XCTestCase {
 
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block2),
+            blockHeader: VolumeImpl<Block>(node: block2),
             block: block2
         )
 
@@ -509,12 +509,12 @@ final class MissingBlockTrackingTests: XCTestCase {
 
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block1),
+            blockHeader: VolumeImpl<Block>(node: block1),
             block: block1
         )
 
         let missingAfter = await chain.getMissingBlockHashes()
-        let block1Hash = HeaderImpl<Block>(node: block1).rawCID
+        let block1Hash = VolumeImpl<Block>(node: block1).rawCID
         XCTAssertFalse(missingAfter.contains(block1Hash), "Should be resolved after parent arrives")
     }
 }

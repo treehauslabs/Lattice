@@ -304,13 +304,13 @@ final class SelfishMiningTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             honestPrev = b
         }
 
         let honestTip = await chain.getMainChainTip()
-        XCTAssertEqual(honestTip, HeaderImpl<Block>(node: honestPrev).rawCID)
+        XCTAssertEqual(honestTip, VolumeImpl<Block>(node: honestPrev).rawCID)
 
         // Selfish miner withholds 3 blocks (same length), publishes all at once
         var selfishPrev = genesis
@@ -331,7 +331,7 @@ final class SelfishMiningTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             cursor = b
         }
@@ -359,7 +359,7 @@ final class SelfishMiningTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             honestPrev = b
         }
@@ -373,13 +373,13 @@ final class SelfishMiningTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             selfishPrev = b
         }
 
         let finalTip = await chain.getMainChainTip()
-        XCTAssertEqual(finalTip, HeaderImpl<Block>(node: selfishPrev).rawCID, "Longer chain wins regardless of timing")
+        XCTAssertEqual(finalTip, VolumeImpl<Block>(node: selfishPrev).rawCID, "Longer chain wins regardless of timing")
     }
 }
 

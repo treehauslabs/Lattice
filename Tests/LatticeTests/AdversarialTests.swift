@@ -535,8 +535,8 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
             spec: s, transactions: [tx], timestamp: base, difficulty: UInt256(1000), fetcher: fetcher2
         )
 
-        let hash1 = HeaderImpl<Block>(node: genesis1).rawCID
-        let hash2 = HeaderImpl<Block>(node: genesis2).rawCID
+        let hash1 = VolumeImpl<Block>(node: genesis1).rawCID
+        let hash2 = VolumeImpl<Block>(node: genesis2).rawCID
         XCTAssertEqual(hash1, hash2, "Genesis block must be deterministic given same inputs")
     }
 }
@@ -563,7 +563,7 @@ final class ConsensusResilienceTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             shortPrev = b
         }
@@ -577,14 +577,14 @@ final class ConsensusResilienceTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             longPrev = b
         }
         let longTip = await chain.getMainChainTip()
 
         XCTAssertNotEqual(shortTip, longTip)
-        XCTAssertEqual(longTip, HeaderImpl<Block>(node: longPrev).rawCID)
+        XCTAssertEqual(longTip, VolumeImpl<Block>(node: longPrev).rawCID)
     }
 
     func testOrphanBlocksHandled() async throws {
@@ -608,13 +608,13 @@ final class ConsensusResilienceTests: XCTestCase {
 
         let result2 = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block2), block: block2
+            blockHeader: VolumeImpl<Block>(node: block2), block: block2
         )
         XCTAssertFalse(result2.extendsMainChain, "Block 2 submitted before block 1 should not extend")
 
         let result1 = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block1), block: block1
+            blockHeader: VolumeImpl<Block>(node: block1), block: block1
         )
         XCTAssertTrue(result1.extendsMainChain)
     }
@@ -635,13 +635,13 @@ final class ConsensusResilienceTests: XCTestCase {
 
         let result1 = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block1), block: block1
+            blockHeader: VolumeImpl<Block>(node: block1), block: block1
         )
         XCTAssertTrue(result1.extendsMainChain)
 
         let result2 = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block1), block: block1
+            blockHeader: VolumeImpl<Block>(node: block1), block: block1
         )
         XCTAssertFalse(result2.extendsMainChain, "Duplicate should not extend")
 
@@ -678,8 +678,8 @@ final class ConsensusResilienceTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
         let _ = await childChain.submitBlock(
-            parentBlockHeaderAndIndex: (HeaderImpl<Block>(node: nexusBlocks[1]).rawCID, 1),
-            blockHeader: HeaderImpl<Block>(node: deepAnchor), block: deepAnchor
+            parentBlockHeaderAndIndex: (VolumeImpl<Block>(node: nexusBlocks[1]).rawCID, 1),
+            blockHeader: VolumeImpl<Block>(node: deepAnchor), block: deepAnchor
         )
 
         let shallowAnchor = try await BlockBuilder.buildBlock(
@@ -687,12 +687,12 @@ final class ConsensusResilienceTests: XCTestCase {
             timestamp: base + 5000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
         let _ = await childChain.submitBlock(
-            parentBlockHeaderAndIndex: (HeaderImpl<Block>(node: nexusBlocks[5]).rawCID, 5),
-            blockHeader: HeaderImpl<Block>(node: shallowAnchor), block: shallowAnchor
+            parentBlockHeaderAndIndex: (VolumeImpl<Block>(node: nexusBlocks[5]).rawCID, 5),
+            blockHeader: VolumeImpl<Block>(node: shallowAnchor), block: shallowAnchor
         )
 
         let tip = await childChain.getMainChainTip()
-        XCTAssertEqual(tip, HeaderImpl<Block>(node: deepAnchor).rawCID,
+        XCTAssertEqual(tip, VolumeImpl<Block>(node: deepAnchor).rawCID,
                        "Deeper parent anchoring should win")
     }
 }

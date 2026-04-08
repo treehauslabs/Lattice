@@ -1,5 +1,5 @@
 {
-  "originHash" : "15be4d4d9cd74ae7abd5511deb0ac29e836bd1944bca682578849fdd9556cb28",
+  "originHash" : "bd3d59f05c7e2a3bf659cb94ef164ff94e237032795ceac56211a846d6e1bc7e",
   "pins" : [
     {
       "identity" : "arraytrie",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "11948258e0db3e8a6f93fe3448cfaed6c303e7dd",
         "version" : "1.0.0"
-      }
-    },
-    {
-      "identity" : "cashew",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/treehauslabs/cashew.git",
-      "state" : {
-        "revision" : "cd72fdf8d6a12c082df31ca377592a42add0544c",
-        "version" : "1.2.0"
       }
     },
     {
@@ -78,8 +69,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "8c0c0a8b49e080e54e5e328cc552821ff07cd341",
-        "version" : "1.2.1"
+        "revision" : "6675bc0ff86e61436e615df6fc5174e043e57924",
+        "version" : "1.4.1"
       }
     },
     {

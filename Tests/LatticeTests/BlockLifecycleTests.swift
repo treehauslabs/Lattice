@@ -243,7 +243,7 @@ final class BlockMintingTests: XCTestCase {
             )
             let result = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             XCTAssertTrue(result.extendsMainChain, "Block \(i) should extend main chain")
             prev = block
@@ -252,7 +252,7 @@ final class BlockMintingTests: XCTestCase {
         let height = await chain.getHighestBlockIndex()
         XCTAssertEqual(height, 5)
         let tip = await chain.getMainChainTip()
-        XCTAssertEqual(tip, HeaderImpl<Block>(node: prev).rawCID)
+        XCTAssertEqual(tip, VolumeImpl<Block>(node: prev).rawCID)
     }
 
     func testMintMultipleBlocksWithTransfers() async throws {
@@ -543,7 +543,7 @@ final class CrossChainTests: XCTestCase {
             )
             let _ = await nexusChain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             nexusPrev = block
         }
@@ -555,15 +555,15 @@ final class CrossChainTests: XCTestCase {
             previous: childGenesis, parentChainBlock: nexusPrev,
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let nexusHeader = HeaderImpl<Block>(node: nexusPrev)
+        let nexusHeader = VolumeImpl<Block>(node: nexusPrev)
         let childResult = await childChain.submitBlock(
             parentBlockHeaderAndIndex: (nexusHeader.rawCID, nexusHeight),
-            blockHeader: HeaderImpl<Block>(node: childBlock1), block: childBlock1
+            blockHeader: VolumeImpl<Block>(node: childBlock1), block: childBlock1
         )
         XCTAssertTrue(childResult.extendsMainChain)
 
         let childMeta = await childChain.getConsensusBlock(
-            hash: HeaderImpl<Block>(node: childBlock1).rawCID
+            hash: VolumeImpl<Block>(node: childBlock1).rawCID
         )
         XCTAssertNotNil(childMeta?.parentIndex)
         XCTAssertEqual(childMeta?.parentIndex, nexusHeight)
@@ -707,13 +707,13 @@ final class BlockLifecycleTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             mainPrev = block
         }
 
         let mainTip = await chain.getMainChainTip()
-        XCTAssertEqual(mainTip, HeaderImpl<Block>(node: mainPrev).rawCID)
+        XCTAssertEqual(mainTip, VolumeImpl<Block>(node: mainPrev).rawCID)
 
         var forkPrev = genesis
         for i in 1...5 {
@@ -723,13 +723,13 @@ final class BlockLifecycleTests: XCTestCase {
             )
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             forkPrev = block
         }
 
         let newTip = await chain.getMainChainTip()
-        let forkTipHash = HeaderImpl<Block>(node: forkPrev).rawCID
+        let forkTipHash = VolumeImpl<Block>(node: forkPrev).rawCID
         XCTAssertEqual(newTip, forkTipHash, "Longer fork should become main chain")
     }
 
@@ -776,7 +776,7 @@ final class BlockLifecycleTests: XCTestCase {
 
         let result = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: mined!), block: mined!
+            blockHeader: VolumeImpl<Block>(node: mined!), block: mined!
         )
         XCTAssertTrue(result.extendsMainChain)
 

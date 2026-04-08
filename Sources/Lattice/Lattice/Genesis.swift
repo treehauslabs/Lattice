@@ -39,7 +39,7 @@ public enum GenesisCeremony {
             difficulty: config.difficulty,
             fetcher: fetcher
         )
-        let blockHash = HeaderImpl<Block>(node: block).rawCID
+        let blockHash = VolumeImpl<Block>(node: block).rawCID
         let chainState = ChainState.fromGenesis(block: block, retentionDepth: retentionDepth)
         return GenesisResult(block: block, blockHash: blockHash, chainState: chainState)
     }

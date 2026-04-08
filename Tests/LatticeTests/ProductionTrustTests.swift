@@ -77,7 +77,7 @@ final class CrashRecoveryTests: XCTestCase {
             )
             let _ = await chain1.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: b), block: b
+                blockHeader: VolumeImpl<Block>(node: b), block: b
             )
             prev = b
         }
@@ -104,7 +104,7 @@ final class CrashRecoveryTests: XCTestCase {
         )
         let result = await chain2.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: block6), block: block6
+            blockHeader: VolumeImpl<Block>(node: block6), block: block6
         )
         XCTAssertTrue(result.extendsMainChain)
 
@@ -127,7 +127,7 @@ final class CrashRecoveryTests: XCTestCase {
         )
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: b1), block: b1
+            blockHeader: VolumeImpl<Block>(node: b1), block: b1
         )
 
         let encoder = JSONEncoder()
@@ -159,7 +159,7 @@ final class CrashRecoveryTests: XCTestCase {
         )
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: b1), block: b1
+            blockHeader: VolumeImpl<Block>(node: b1), block: b1
         )
 
         let persisted = await chain.persist()
@@ -199,11 +199,11 @@ final class TwoNodeConvergenceTests: XCTestCase {
         for block in blocks.dropFirst() {
             let _ = await nodeA.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             let _ = await nodeB.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
         }
 
@@ -232,7 +232,7 @@ final class TwoNodeConvergenceTests: XCTestCase {
         for block in forkA.dropFirst() {
             let _ = await nodeA.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
         }
 
@@ -247,7 +247,7 @@ final class TwoNodeConvergenceTests: XCTestCase {
         for block in forkBBlocks.dropFirst() {
             let _ = await nodeB.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
         }
 
@@ -259,7 +259,7 @@ final class TwoNodeConvergenceTests: XCTestCase {
         for block in forkA.dropFirst() {
             let _ = await nodeB.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
         }
 
@@ -686,7 +686,7 @@ final class ChainDepthTests: XCTestCase {
         )
         let _ = await nexusChain.submitBlock(
             parentBlockHeaderAndIndex: nil,
-            blockHeader: HeaderImpl<Block>(node: nexusBlock1), block: nexusBlock1
+            blockHeader: VolumeImpl<Block>(node: nexusBlock1), block: nexusBlock1
         )
 
         let nexusHeight = await nexusChain.getHighestBlockIndex()
@@ -697,8 +697,8 @@ final class ChainDepthTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
         let childResult = await childChain.submitBlock(
-            parentBlockHeaderAndIndex: (HeaderImpl<Block>(node: nexusBlock1).rawCID, 1),
-            blockHeader: HeaderImpl<Block>(node: childBlock1), block: childBlock1
+            parentBlockHeaderAndIndex: (VolumeImpl<Block>(node: nexusBlock1).rawCID, 1),
+            blockHeader: VolumeImpl<Block>(node: childBlock1), block: childBlock1
         )
         XCTAssertTrue(childResult.extendsMainChain)
 
@@ -707,8 +707,8 @@ final class ChainDepthTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
         let gcResult = await grandchildChain.submitBlock(
-            parentBlockHeaderAndIndex: (HeaderImpl<Block>(node: childBlock1).rawCID, 1),
-            blockHeader: HeaderImpl<Block>(node: gcBlock1), block: gcBlock1
+            parentBlockHeaderAndIndex: (VolumeImpl<Block>(node: childBlock1).rawCID, 1),
+            blockHeader: VolumeImpl<Block>(node: gcBlock1), block: gcBlock1
         )
         XCTAssertTrue(gcResult.extendsMainChain)
 
@@ -760,7 +760,7 @@ final class PerformanceRegressionTests: XCTestCase {
         for block in blocks.dropFirst() {
             let _ = await chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
         }
         let elapsed = Date().timeIntervalSince(start)

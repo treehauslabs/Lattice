@@ -39,7 +39,7 @@ Task {
         difficulty: UInt256(1000),
         fetcher: fetcher
     )
-    let genesisHeader = HeaderImpl<Block>(node: genesis)
+    let genesisHeader = VolumeImpl<Block>(node: genesis)
     print("Genesis block CID: \(genesisHeader.rawCID)")
     print("Genesis difficulty hash: \(genesis.getDifficultyHash())")
     print()
@@ -58,7 +58,7 @@ Task {
             nonce: UInt64(i),
             fetcher: fetcher
         )
-        let header = HeaderImpl<Block>(node: block)
+        let header = VolumeImpl<Block>(node: block)
         let result = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
             blockHeader: header,
@@ -87,7 +87,7 @@ Task {
             nonce: UInt64(100 + i),
             fetcher: fetcher
         )
-        let header = HeaderImpl<Block>(node: block)
+        let header = VolumeImpl<Block>(node: block)
         let result = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
             blockHeader: header,

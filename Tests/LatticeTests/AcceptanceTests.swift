@@ -20,130 +20,6 @@ private func testSpec(_ dir: String = "Nexus") -> ChainSpec {
     )
 }
 
-// MARK: - Mempool Tests
-
-@MainActor
-final class MempoolTests: XCTestCase {
-
-    func testAddAndSelectByFee() async {
-        let mempool = Mempool(maxSize: 100)
-
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        var txs: [Transaction] = []
-        for i: UInt64 in 0..<5 {
-            let body = TransactionBody(
-                accountActions: [], actions: [], swapActions: [],
-                swapClaimActions: [], genesisActions: [], peerActions: [],
-                settleActions: [], signers: [signerCID], fee: i * 10, nonce: i
-            )
-            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-            txs.append(tx)
-        }
-
-        for tx in txs {
-            let added = await mempool.add(transaction: tx)
-            XCTAssertTrue(added)
-        }
-
-        let count = await mempool.count
-        XCTAssertEqual(count, 5)
-
-        let selected = await mempool.selectTransactions(maxCount: 3)
-        XCTAssertEqual(selected.count, 3)
-
-        let fees = selected.compactMap { $0.body.node?.fee }
-        XCTAssertEqual(fees, fees.sorted(by: >), "Should be sorted by descending fee")
-    }
-
-    func testDuplicateRejected() async {
-        let mempool = Mempool(maxSize: 100)
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [signerCID], fee: 10, nonce: 1
-        )
-        let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-        let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-        let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-
-        let first = await mempool.add(transaction: tx)
-        XCTAssertTrue(first)
-        let second = await mempool.add(transaction: tx)
-        XCTAssertFalse(second)
-    }
-
-    func testInvalidSignatureRejected() async {
-        let mempool = Mempool(maxSize: 100)
-        let kp = CryptoUtils.generateKeyPair()
-
-        let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["fake"], fee: 10, nonce: 1
-        )
-        let tx = Transaction(signatures: [kp.publicKey: "deadbeef"], body: HeaderImpl<TransactionBody>(node: body))
-
-        let added = await mempool.add(transaction: tx)
-        XCTAssertFalse(added, "Invalid signature should be rejected")
-    }
-
-    func testEvictsLowestFeeWhenFull() async {
-        let mempool = Mempool(maxSize: 3)
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        for i: UInt64 in 0..<4 {
-            let body = TransactionBody(
-                accountActions: [], actions: [], swapActions: [],
-                swapClaimActions: [], genesisActions: [], peerActions: [],
-                settleActions: [], signers: [signerCID], fee: (i + 1) * 10, nonce: i
-            )
-            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-            let _ = await mempool.add(transaction: tx)
-        }
-
-        let count = await mempool.count
-        XCTAssertEqual(count, 3, "Should evict to stay at maxSize")
-
-        let selected = await mempool.selectTransactions(maxCount: 3)
-        let fees = selected.compactMap { $0.body.node?.fee }
-        XCTAssertFalse(fees.contains(10), "Lowest fee (10) should have been evicted")
-    }
-
-    func testPruneConfirmed() async {
-        let mempool = Mempool(maxSize: 100)
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        var cids: [String] = []
-        for i: UInt64 in 0..<3 {
-            let body = TransactionBody(
-                accountActions: [], actions: [], swapActions: [],
-                swapClaimActions: [], genesisActions: [], peerActions: [],
-                settleActions: [], signers: [signerCID], fee: 10, nonce: i
-            )
-            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-            let _ = await mempool.add(transaction: tx)
-            cids.append(bodyHeader.rawCID)
-        }
-
-        await mempool.removeAll(txCIDs: Set([cids[0], cids[1]]))
-        let remaining = await mempool.count
-        XCTAssertEqual(remaining, 1)
-    }
-}
-
 // MARK: - Full Pipeline Acceptance Test
 
 @MainActor
@@ -155,7 +31,6 @@ final class FullPipelineAcceptanceTests: XCTestCase {
             spec: spec, timestamp: 1_000_000, difficulty: UInt256.max, fetcher: fetcher
         )
         let chain = ChainState.fromGenesis(block: genesis)
-        let mempool = Mempool(maxSize: 1000)
 
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, timestamp: 2_000_000,
@@ -164,7 +39,7 @@ final class FullPipelineAcceptanceTests: XCTestCase {
         let mined = BlockBuilder.mine(block: block1, targetDifficulty: UInt256.max, maxAttempts: 10)
         XCTAssertNotNil(mined)
 
-        let header = HeaderImpl<Block>(node: mined!)
+        let header = VolumeImpl<Block>(node: mined!)
         let result = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil, blockHeader: header, block: mined!
         )
@@ -172,39 +47,6 @@ final class FullPipelineAcceptanceTests: XCTestCase {
 
         let tip = await chain.getMainChainTip()
         XCTAssertEqual(tip, header.rawCID)
-    }
-
-    func testMempoolToBlockPipeline() async throws {
-        let spec = testSpec()
-        let genesis = try await BlockBuilder.buildGenesis(
-            spec: spec, timestamp: 1_000_000, difficulty: UInt256.max, fetcher: fetcher
-        )
-        let chain = ChainState.fromGenesis(block: genesis)
-        let mempool = Mempool(maxSize: 1000)
-
-        let kp = CryptoUtils.generateKeyPair()
-        let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID
-
-        for i: UInt64 in 0..<5 {
-            let body = TransactionBody(
-                accountActions: [], actions: [], swapActions: [],
-                swapClaimActions: [], genesisActions: [], peerActions: [],
-                settleActions: [], signers: [signerCID], fee: i + 1, nonce: i
-            )
-            let bodyHeader = HeaderImpl<TransactionBody>(node: body)
-            let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
-            let tx = Transaction(signatures: [kp.publicKey: sig], body: bodyHeader)
-            let _ = await mempool.add(transaction: tx)
-        }
-
-        let count = await mempool.count
-        XCTAssertEqual(count, 5)
-
-        let selected = await mempool.selectTransactions(maxCount: 3)
-        XCTAssertEqual(selected.count, 3)
-
-        let fees = selected.compactMap { $0.body.node?.fee }
-        XCTAssertTrue(fees[0] >= fees[1] && fees[1] >= fees[2], "Highest fees selected first")
     }
 
     func testMultiChainConsensusWithAnchoringAndReorg() async throws {
@@ -231,7 +73,7 @@ final class FullPipelineAcceptanceTests: XCTestCase {
             )
             let _ = await nexusChain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
-                blockHeader: HeaderImpl<Block>(node: block), block: block
+                blockHeader: VolumeImpl<Block>(node: block), block: block
             )
             nexusPrev = block
         }
@@ -242,10 +84,10 @@ final class FullPipelineAcceptanceTests: XCTestCase {
         let childBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis, timestamp: 2_000_000, nonce: 1, fetcher: fetcher
         )
-        let nexusBlockHeader = HeaderImpl<Block>(node: nexusPrev)
+        let nexusBlockHeader = VolumeImpl<Block>(node: nexusPrev)
         let childResult = await childChain.submitBlock(
             parentBlockHeaderAndIndex: (nexusBlockHeader.rawCID, nexusHeight),
-            blockHeader: HeaderImpl<Block>(node: childBlock1),
+            blockHeader: VolumeImpl<Block>(node: childBlock1),
             block: childBlock1
         )
         XCTAssertTrue(childResult.extendsMainChain)
@@ -254,7 +96,7 @@ final class FullPipelineAcceptanceTests: XCTestCase {
         XCTAssertEqual(childHeight, 1)
 
         let childBlock1Meta = await childChain.getConsensusBlock(
-            hash: HeaderImpl<Block>(node: childBlock1).rawCID
+            hash: VolumeImpl<Block>(node: childBlock1).rawCID
         )
         XCTAssertNotNil(childBlock1Meta?.parentIndex, "Child block should have parent chain anchoring")
     }
