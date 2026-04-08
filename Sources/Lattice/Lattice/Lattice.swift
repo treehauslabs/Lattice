@@ -193,6 +193,12 @@ public actor ChainLevel {
             if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { return false }
         }
 
+        // Verify frontier state root: re-derive from homestead + transactions
+        guard let frontierValid = try? await childBlock.validateFrontierState(
+            transactionBodies: bodies, fetcher: fetcher
+        ) else { return false }
+        if !frontierValid { return false }
+
         return true
     }
 
