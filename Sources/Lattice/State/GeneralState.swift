@@ -1,7 +1,7 @@
 import cashew
 
 public typealias GeneralState = MerkleDictionaryImpl<String>
-public typealias GeneralStateHeader = HeaderImpl<GeneralState>
+public typealias GeneralStateHeader = VolumeImpl<GeneralState>
 
 public extension GeneralStateHeader {
     func prove(allActions: [Action], fetcher: Fetcher) async throws -> GeneralStateHeader {

@@ -42,7 +42,7 @@ public struct SwapKey: LosslessStringConvertible {
 }
 
 public typealias SwapState = MerkleDictionaryImpl<UInt64>
-public typealias SwapStateHeader = HeaderImpl<SwapState>
+public typealias SwapStateHeader = VolumeImpl<SwapState>
 
 public extension SwapStateHeader {
     func proveAndUpdateState(allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], fetcher: Fetcher) async throws -> SwapStateHeader {

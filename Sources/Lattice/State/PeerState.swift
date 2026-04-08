@@ -28,7 +28,7 @@ public struct PeerValue: Scalar {
 }
 
 public typealias PeerState = MerkleDictionaryImpl<PeerValue>
-public typealias PeerStateHeader = HeaderImpl<PeerState>
+public typealias PeerStateHeader = VolumeImpl<PeerState>
 
 public extension PeerStateHeader {
     func prove(allPeerActions: [PeerAction], fetcher: Fetcher) async throws -> PeerStateHeader {

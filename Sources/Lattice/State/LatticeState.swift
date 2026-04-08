@@ -67,4 +67,4 @@ public struct LatticeState: Node {
     }
 }
 
-public typealias LatticeStateHeader = HeaderImpl<LatticeState>
+public typealias LatticeStateHeader = VolumeImpl<LatticeState>

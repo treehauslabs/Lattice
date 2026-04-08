@@ -32,7 +32,7 @@ public struct SettleKey: LosslessStringConvertible {
 }
 
 public typealias SettleState = MerkleDictionaryImpl<UInt64>
-public typealias SettleStateHeader = HeaderImpl<SettleState>
+public typealias SettleStateHeader = VolumeImpl<SettleState>
 
 public extension SettleStateHeader {
     func proveExistenceOfSettlement(directory: String, swapClaimActions: [SwapClaimAction], fetcher: Fetcher) async throws -> SettleStateHeader {

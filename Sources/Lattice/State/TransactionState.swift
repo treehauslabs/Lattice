@@ -1,7 +1,7 @@
 import cashew
 
 public typealias TransactionState = MerkleDictionaryImpl<String>
-public typealias TransactionStateHeader = HeaderImpl<TransactionState>
+public typealias TransactionStateHeader = VolumeImpl<TransactionState>
 
 public extension TransactionStateHeader {
     func prove(allTransactions: [TransactionBody], fetcher: Fetcher) async throws -> TransactionStateHeader {

@@ -1,7 +1,7 @@
 import cashew
 
 public typealias AccountState = MerkleDictionaryImpl<UInt64>
-public typealias AccountStateHeader = HeaderImpl<AccountState>
+public typealias AccountStateHeader = VolumeImpl<AccountState>
 
 public extension AccountStateHeader {
     func prove(allAccountActions: [AccountAction], fetcher: Fetcher) async throws -> AccountStateHeader {

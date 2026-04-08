@@ -1,7 +1,7 @@
 import cashew
 
 public typealias GenesisState = MerkleDictionaryImpl<Block>
-public typealias GenesisStateHeader = HeaderImpl<GenesisState>
+public typealias GenesisStateHeader = VolumeImpl<GenesisState>
 
 public extension GenesisStateHeader {
     func prove(allGenesisActions: [GenesisAction], fetcher: Fetcher) async throws -> GenesisStateHeader {
