@@ -112,7 +112,7 @@ Every `ChainLevel` owns a `ChainState` actor that manages block metadata, fork t
 
 ### Core design
 
-**Content-addressed everything.** All data — blocks, transactions, state — is wrapped in content-addressed headers (IPLD/CID). Nodes only fetch what they need. A node tracking the nexus doesn't download child chain state; it verifies Merkle proofs against committed roots.
+**Content-addressed everything.** All data — blocks, transactions, state — is wrapped in content-addressed headers (IPLD/CID). Nodes only fetch what they need. A node tracking the nexus doesn't download child chain state; it verifies Merkle proofs against committed roots. Block and Transaction boundaries use [Volumes](https://github.com/treehauslabs/cashew#volumes-data-locality-for-content-addressed-trees) — a `Header` subtype that notifies the fetcher before resolution, so it can locate the peer that stores the block's children contiguously.
 
 **Three-phase state model.** Each block carries `parentHomestead` (parent chain's state), `homestead` (confirmed state entering the block), and `frontier` (state after applying transactions). This is what makes trustless cross-chain verification possible without querying another chain at validation time.
 
@@ -215,7 +215,7 @@ Sources/Lattice/
 
 | Dependency | Purpose |
 |---|---|
-| [cashew](https://github.com/pumperknickle/cashew) | Content-addressed Merkle data structures (IPLD, Sparse Merkle Trees, CIDs) |
+| [cashew](https://github.com/treehauslabs/cashew) | Content-addressed Merkle data structures (IPLD, Sparse Merkle Trees, CIDs, Volumes) |
 | [swift-crypto](https://github.com/apple/swift-crypto) | P-256 ECDSA + SHA-256 |
 | [UInt256](https://github.com/treehauslabs/UInt256) | 256-bit integers for difficulty targets |
 | [swift-cid](https://github.com/swift-libp2p/swift-cid) | Content Identifier encoding |
@@ -237,7 +237,7 @@ Sources/Lattice/
 - [x] P-256 ECDSA transaction signing and verification
 - [x] JavaScript transaction/action filters
 - [x] libp2p networking, peer discovery, block gossip
-- [x] Transaction mempool with fee-based prioritization
+- [x] Volume-based data locality hints at Block and Transaction boundaries
 - [x] Persistent storage backend via Fetcher protocol
 - [x] Content-addressed data retrieval
 - [x] Fast sync via state snapshots
