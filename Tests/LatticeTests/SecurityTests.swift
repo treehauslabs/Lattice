@@ -75,12 +75,12 @@ final class DoubleSpendTests: XCTestCase {
 
     func testTransactionNonceReplayBlocked() {
         let body1 = TransactionBody(
-            accountActions: [AccountAction(owner: "alice", oldBalance: 100, newBalance: 50)],
+            accountActions: [AccountAction(owner: "alice", delta: Int64(50) - Int64(100))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
         let body2 = TransactionBody(
-            accountActions: [AccountAction(owner: "alice", oldBalance: 50, newBalance: 0)],
+            accountActions: [AccountAction(owner: "alice", delta: -Int64(50))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
@@ -172,7 +172,7 @@ final class BalanceConservationTests: XCTestCase {
             childBlocks: HeaderImpl(node: MerkleDictionaryImpl<VolumeImpl<Block>>()),
             index: 0, timestamp: 1_000_000, nonce: 0
         )
-        let accountActions = [AccountAction(owner: "miner", oldBalance: 0, newBalance: 999_999_999)]
+        let accountActions = [AccountAction(owner: "miner", delta: Int64(999_999_999))]
         let valid = try g.validateBalanceChangesForGenesis(
             spec: spec(), allSwapActions: [], allAccountActions: accountActions, totalFees: 0
         )
@@ -195,8 +195,8 @@ final class BalanceConservationTests: XCTestCase {
         let reward = s.rewardAtBlock(1)
         let fees: UInt64 = 50
         let accountActions = [
-            AccountAction(owner: "sender", oldBalance: 1000, newBalance: 1000 - fees),
-            AccountAction(owner: "miner", oldBalance: 0, newBalance: reward + fees)
+            AccountAction(owner: "sender", delta: Int64(1000 - fees) - Int64(1000)),
+            AccountAction(owner: "miner", delta: Int64(reward + fees))
         ]
         let valid = try g.validateBalanceChanges(
             spec: s, allSwapActions: [], allSwapClaimActions: [],
@@ -205,7 +205,7 @@ final class BalanceConservationTests: XCTestCase {
         XCTAssertTrue(valid, "Miner can claim reward + fees")
 
         let overClaim = [
-            AccountAction(owner: "miner", oldBalance: 0, newBalance: reward + fees + 1)
+            AccountAction(owner: "miner", delta: Int64(reward + fees + 1))
         ]
         let invalid = try g.validateBalanceChanges(
             spec: s, allSwapActions: [], allSwapClaimActions: [],
@@ -616,8 +616,8 @@ final class BugRegressionTests: XCTestCase {
 
     func testAccountStateProveUsesCorrectProofTypes() async throws {
         let emptyAccount = AccountStateHeader(node: AccountState())
-        let insertAction = AccountAction(owner: "new_user", oldBalance: 0, newBalance: 100)
-        let proved = try await emptyAccount.prove(allAccountActions: [insertAction], fetcher: fetcher)
+        let insertAction = AccountAction(owner: "new_user", delta: Int64(100))
+        let proved = try await emptyAccount.proveAndUpdateState(allAccountActions: [insertAction], fetcher: fetcher)
         XCTAssertNotNil(proved, "Insertion proof should succeed on empty state")
     }
 

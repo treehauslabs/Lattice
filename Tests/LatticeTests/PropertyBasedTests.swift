@@ -365,14 +365,14 @@ final class BalanceConservationPropertyTests: XCTestCase {
         }
     }
 
-    // Property: Account actions where newBalance < oldBalance require signer authorization
+    // Property: Account actions with negative delta (debit) require signer authorization
     func testDebitRequiresSignerProperty() {
         for _ in 0..<100 {
             let owner = "owner_\(UUID().uuidString)"
             let oldBalance = UInt64.random(in: 100...10000)
             let newBalance = UInt64.random(in: 0..<oldBalance)
 
-            let action = AccountAction(owner: owner, oldBalance: oldBalance, newBalance: newBalance)
+            let action = AccountAction(owner: owner, delta: Int64(newBalance) - Int64(oldBalance))
             let body = TransactionBody(
                 accountActions: [action],
                 actions: [],
@@ -405,14 +405,14 @@ final class BalanceConservationPropertyTests: XCTestCase {
         }
     }
 
-    // Property: Credit (newBalance > oldBalance) does NOT require signer
+    // Property: Credit (positive delta) does NOT require signer
     func testCreditDoesNotRequireSigner() {
         for _ in 0..<100 {
             let owner = "owner_\(UUID().uuidString)"
             let oldBalance = UInt64.random(in: 0...10000)
             let newBalance = oldBalance + UInt64.random(in: 1...10000)
 
-            let action = AccountAction(owner: owner, oldBalance: oldBalance, newBalance: newBalance)
+            let action = AccountAction(owner: owner, delta: Int64(newBalance) - Int64(oldBalance))
             let body = TransactionBody(
                 accountActions: [action],
                 actions: [],
@@ -527,8 +527,8 @@ final class StateDeltaPropertyTests: XCTestCase {
             let owner = UUID().uuidString
             let balance = UInt64.random(in: 1...1000000)
 
-            let create = AccountAction(owner: owner, oldBalance: 0, newBalance: balance)
-            let delete = AccountAction(owner: owner, oldBalance: balance, newBalance: 0)
+            let create = AccountAction(owner: owner, delta: Int64(balance))
+            let delete = AccountAction(owner: owner, delta: -Int64(balance))
 
             let createDelta = try! create.stateDelta()
             let deleteDelta = try! delete.stateDelta()
@@ -588,8 +588,8 @@ final class StateDeltaPropertyTests: XCTestCase {
     // Property: TransactionBody state delta is sum of all action deltas
     func testTransactionBodyDeltaIsSum() {
         let accountActions = [
-            AccountAction(owner: "a", oldBalance: 0, newBalance: 100),
-            AccountAction(owner: "b", oldBalance: 100, newBalance: 50),
+            AccountAction(owner: "a", delta: Int64(100)),
+            AccountAction(owner: "b", delta: Int64(50) - Int64(100)),
         ]
         let kvActions = [
             Action(key: "key1", oldValue: nil, newValue: "value1"),

@@ -30,7 +30,7 @@ private func premineGenesis(
 ) async throws -> Block {
     let addr = id(kp.publicKey)
     let body = TransactionBody(
-        accountActions: [AccountAction(owner: addr, oldBalance: 0, newBalance: spec.premineAmount())],
+        accountActions: [AccountAction(owner: addr, delta: Int64(spec.premineAmount()))],
         actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
         peerActions: [], settleActions: [], signers: [addr], fee: 0, nonce: 0
     )
@@ -293,7 +293,7 @@ final class ChildGenesisValidationTests: XCTestCase {
 
         let reward = nexusSpec.rewardAtBlock(0)
         let body = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [],
             swapClaimActions: [],
             genesisActions: [GenesisAction(directory: "Child", block: childGenesis)], peerActions: [], settleActions: [],
@@ -335,7 +335,7 @@ final class ClaimSecurityTests: XCTestCase {
         let childSwapKey = SwapKey(swapAction: childSwap).description
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premine, newBalance: premine - 500 + childReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - 500 + childReward) - Int64(premine))],
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -347,7 +347,7 @@ final class ClaimSecurityTests: XCTestCase {
         )
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nexusReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: kpAddr, senderB: kpAddr, swapKeyA: childSwapKey, directoryA: "Child", swapKeyB: childSwapKey, directoryB: "Child")],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -359,7 +359,7 @@ final class ClaimSecurityTests: XCTestCase {
 
         let balanceAfterSwap = premine - 500 + childReward
         let wrongNonceBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: balanceAfterSwap, newBalance: balanceAfterSwap + 500 + childReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(balanceAfterSwap + 500 + childReward) - Int64(balanceAfterSwap))],
             actions: [], swapActions: [],
             swapClaimActions: [
                 SwapClaimAction(nonce: 99, sender: kpAddr, recipient: kpAddr, amount: 500, timelock: 1000, isRefund: false)
@@ -406,7 +406,7 @@ final class ClaimSecurityTests: XCTestCase {
         let childSwapKey = SwapKey(swapAction: childSwap).description
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premine, newBalance: premine - 500 + childReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - 500 + childReward) - Int64(premine))],
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -418,7 +418,7 @@ final class ClaimSecurityTests: XCTestCase {
         )
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nexusReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: kpAddr, senderB: kpAddr, swapKeyA: childSwapKey, directoryA: "Child", swapKeyB: childSwapKey, directoryB: "Child")],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -430,7 +430,7 @@ final class ClaimSecurityTests: XCTestCase {
 
         let balanceAfterSwap = premine - 500 + childReward
         let wrongAmountBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: balanceAfterSwap, newBalance: balanceAfterSwap + 500 + childReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(balanceAfterSwap + 500 + childReward) - Int64(balanceAfterSwap))],
             actions: [], swapActions: [],
             swapClaimActions: [
                 SwapClaimAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: 9999, timelock: 1000, isRefund: false)
@@ -485,8 +485,8 @@ final class FeeOnlyEconomyTests: XCTestCase {
         let reward = spec.rewardAtBlock(0)
         let body = TransactionBody(
             accountActions: [
-                AccountAction(owner: payerAddr, oldBalance: premine, newBalance: premine - fee),
-                AccountAction(owner: minerAddr, oldBalance: 0, newBalance: reward + fee)
+                AccountAction(owner: payerAddr, delta: Int64(premine - fee) - Int64(premine)),
+                AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [payerAddr], fee: fee, nonce: 1
@@ -507,10 +507,10 @@ final class FeeOnlyEconomyTests: XCTestCase {
 @MainActor
 final class DustAttackTests: XCTestCase {
 
-    func testStateDeltaLimitPreventsMassAccountCreation() async throws {
+    func testStateDeltaLimitPreventsExcessiveStateGrowth() async throws {
         let fetcher = f()
         let base = now() - 10_000
-        // 200 bytes state growth limit — only fits ~2-3 accounts
+        // 200 bytes state growth limit
         let tinySpec = ChainSpec(directory: "Nexus", maxNumberOfTransactionsPerBlock: 100,
                                  maxStateGrowth: 200, maxBlockSize: 1_000_000,
                                  premine: 1000, targetBlockTime: 1_000,
@@ -521,27 +521,23 @@ final class DustAttackTests: XCTestCase {
 
         let genesis = try await BlockBuilder.buildGenesis(
             spec: tinySpec, transactions: [tx(TransactionBody(
-                accountActions: [AccountAction(owner: funderAddr, oldBalance: 0, newBalance: premine)],
+                accountActions: [AccountAction(owner: funderAddr, delta: Int64(premine))],
                 actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
                 peerActions: [], settleActions: [], signers: [funderAddr], fee: 0, nonce: 0
             ), funder)],
             timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
         )
 
-        // Try creating 10 dust accounts
+        // Create many KV insertions that exceed the 200-byte state growth limit
         let reward = tinySpec.rewardAtBlock(0)
-        var actions: [AccountAction] = []
-        var remaining = premine
+        var kvActions: [Action] = []
         for i in 0..<10 {
-            let dustKp = CryptoUtils.generateKeyPair()
-            actions.append(AccountAction(owner: id(dustKp.publicKey), oldBalance: 0, newBalance: 1))
-            remaining -= 1
+            kvActions.append(Action(key: "dust_key_\(i)_padding", oldValue: nil, newValue: "some_value_here"))
         }
-        actions.append(AccountAction(owner: funderAddr, oldBalance: premine, newBalance: remaining + reward))
 
         let body = TransactionBody(
-            accountActions: actions,
-            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            accountActions: [AccountAction(owner: funderAddr, delta: Int64(reward))],
+            actions: kvActions, swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [funderAddr], fee: 0, nonce: 1
         )
         let block = try await BlockBuilder.buildBlock(
@@ -549,7 +545,7 @@ final class DustAttackTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
         let valid = try await block.validateNexus(fetcher: fetcher)
-        XCTAssertFalse(valid, "Mass dust account creation should exceed state growth limit")
+        XCTAssertFalse(valid, "KV insertions should exceed 200-byte state growth limit")
     }
 }
 
@@ -617,7 +613,7 @@ final class CrossChainBalanceConservationTests: XCTestCase {
         let childSwapKey = SwapKey(swapAction: childSwap).description
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: childPremine, newBalance: childPremine - swapAmount + childReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(childPremine - swapAmount + childReward) - Int64(childPremine))],
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -630,7 +626,7 @@ final class CrossChainBalanceConservationTests: XCTestCase {
         let childBalanceAfterSwap = childPremine - swapAmount + childReward
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nexusReward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: kpAddr, senderB: kpAddr, swapKeyA: childSwapKey, directoryA: "Child", swapKeyB: childSwapKey, directoryB: "Child")],
             signers: [kpAddr], fee: 0, nonce: 0

@@ -100,10 +100,9 @@ public struct TransactionBody: Scalar {
     }
 
     func accountActionsAreValid() -> Bool {
-        let accountActionsThatRemoveFunds = accountActions.filter { $0.newBalance < $0.oldBalance }
         let signerSet = Set(signers)
-        for accountActionsThatRemoveFund in accountActionsThatRemoveFunds {
-            if !signerSet.contains(accountActionsThatRemoveFund.owner) { return false }
+        for action in accountActions where action.isDebit {
+            if !signerSet.contains(action.owner) { return false }
         }
         return true
     }

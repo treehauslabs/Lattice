@@ -494,12 +494,11 @@ final class UInt256FuzzTests: XCTestCase {
 
 final class AccountActionFuzzTests: XCTestCase {
 
-    func testVerifyRejectsNoChange() {
+    func testVerifyRejectsZeroDelta() {
         var rng = SeededRNG(seed: 1919)
         for _ in 0..<200 {
-            let balance = UInt64.random(in: 0...UInt64.max, using: &rng)
-            let action = AccountAction(owner: rng.randomHash(), oldBalance: balance, newBalance: balance)
-            XCTAssertFalse(action.verify(), "Verify should reject no-change action")
+            let action = AccountAction(owner: rng.randomHash(), delta: 0)
+            XCTAssertFalse(action.verify(), "Verify should reject zero-delta action")
         }
     }
 
@@ -508,27 +507,26 @@ final class AccountActionFuzzTests: XCTestCase {
         for _ in 0..<200 {
             let old = UInt64.random(in: 0...UInt64.max / 2, using: &rng)
             let new = old + UInt64.random(in: 1...1000, using: &rng)
-            let action = AccountAction(owner: rng.randomHash(), oldBalance: old, newBalance: new)
+            let action = AccountAction(owner: rng.randomHash(), delta: Int64(new) - Int64(old))
             XCTAssertTrue(action.verify(), "Verify should accept changed action")
         }
     }
 
-    func testStateDeltaSign() {
+    func testStateDeltaIsConservativelyZero() {
         var rng = SeededRNG(seed: 2121)
         for _ in 0..<200 {
             let owner = rng.randomHash()
 
-            let createAction = AccountAction(owner: owner, oldBalance: 0, newBalance: 100)
-            let createDelta = try! createAction.stateDelta()
-            XCTAssertGreaterThan(createDelta, 0, "Creating account should have positive delta")
+            // With delta model, stateDelta() returns 0 (conservative) since
+            // insertion/deletion can't be determined without current state
+            let creditAction = AccountAction(owner: owner, delta: Int64(100))
+            XCTAssertEqual(creditAction.stateDelta(), 0)
 
-            let deleteAction = AccountAction(owner: owner, oldBalance: 100, newBalance: 0)
-            let deleteDelta = try! deleteAction.stateDelta()
-            XCTAssertLessThan(deleteDelta, 0, "Deleting account should have negative delta")
+            let debitAction = AccountAction(owner: owner, delta: -Int64(100))
+            XCTAssertEqual(debitAction.stateDelta(), 0)
 
-            let updateAction = AccountAction(owner: owner, oldBalance: 50, newBalance: 100)
-            let updateDelta = try! updateAction.stateDelta()
-            XCTAssertEqual(updateDelta, 0, "Updating account should have zero delta")
+            let smallDelta = AccountAction(owner: owner, delta: Int64(50))
+            XCTAssertEqual(smallDelta.stateDelta(), 0)
         }
     }
 }

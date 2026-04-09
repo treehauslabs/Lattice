@@ -89,7 +89,9 @@ public actor ChainLevel {
         fetcher: Fetcher,
         ancestorSpecs: [ChainSpec] = []
     ) async -> [String] {
-        guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(fetcher: fetcher).node else { return [] }
+        guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(
+            paths: [[""]: .list], fetcher: fetcher
+        ).node else { return [] }
         guard let allChildKeys = try? childBlocksNode.allKeys() else { return [] }
         if allChildKeys.isEmpty { return [] }
 

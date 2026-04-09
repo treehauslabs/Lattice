@@ -30,7 +30,7 @@ private func premineGenesis(
 ) async throws -> Block {
     let addr = id(kp.publicKey)
     let body = TransactionBody(
-        accountActions: [AccountAction(owner: addr, oldBalance: 0, newBalance: spec.premineAmount())],
+        accountActions: [AccountAction(owner: addr, delta: Int64(spec.premineAmount()))],
         actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
         peerActions: [], settleActions: [], signers: [addr], fee: 0, nonce: 0
     )
@@ -68,7 +68,7 @@ final class DoubleClaimTests: XCTestCase {
         let childSwapKey = SwapKey(swapAction: childSwap).description
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premine, newBalance: premine - amount + cr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - amount + cr) - Int64(premine))],
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -81,7 +81,7 @@ final class DoubleClaimTests: XCTestCase {
         let bal1 = premine - amount + cr
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: kpAddr, senderB: kpAddr, swapKeyA: childSwapKey, directoryA: "Child", swapKeyB: childSwapKey, directoryB: "Child")],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -92,7 +92,7 @@ final class DoubleClaimTests: XCTestCase {
         )
 
         let c1Body = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: bal1, newBalance: bal1 + amount + cr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(bal1 + amount + cr) - Int64(bal1))],
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: amount, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
@@ -107,7 +107,7 @@ final class DoubleClaimTests: XCTestCase {
         let bal2 = bal1 + amount + cr
 
         let c2Body = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: bal2, newBalance: bal2 + amount + cr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(bal2 + amount + cr) - Int64(bal2))],
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: amount, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
@@ -153,7 +153,7 @@ final class PhantomSettleTests: XCTestCase {
         let phantomSwapKey = SwapKey(swapAction: SwapAction(nonce: 99, sender: kpAddr, recipient: kpAddr, amount: 1000, timelock: 1000)).description
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 99, senderA: kpAddr, senderB: kpAddr, swapKeyA: phantomSwapKey, directoryA: "Child", swapKeyB: phantomSwapKey, directoryB: "Child")],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -166,7 +166,7 @@ final class PhantomSettleTests: XCTestCase {
         XCTAssertTrue(nv, "Settle is accepted on nexus — nexus doesn't cross-verify swaps")
 
         let claimBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premine, newBalance: premine + 1000 + cr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine + 1000 + cr) - Int64(premine))],
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 99, sender: kpAddr, recipient: kpAddr, amount: 1000, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
@@ -229,7 +229,7 @@ final class CrossChainReplayTests: XCTestCase {
         let childASwapKey = SwapKey(swapAction: childASwap).description
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premineA, newBalance: premineA - amount + crA)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premineA - amount + crA) - Int64(premineA))],
             actions: [],
             swapActions: [childASwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -241,7 +241,7 @@ final class CrossChainReplayTests: XCTestCase {
         )
 
         let settleBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: nr)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: kpAddr, senderB: kpAddr, swapKeyA: childASwapKey, directoryA: "ChildA", swapKeyB: childASwapKey, directoryB: "ChildA")],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -253,7 +253,7 @@ final class CrossChainReplayTests: XCTestCase {
 
         let crB = childBSpec.initialReward
         let replayBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: premineB, newBalance: premineB + amount + crB)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(premineB + amount + crB) - Int64(premineB))],
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: amount, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
@@ -412,7 +412,7 @@ final class TransactionFilterBlockTests: XCTestCase {
 
         // Block with fee=5 (below filter minimum of 10)
         let lowFeeBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 5, nonce: 0
         )
@@ -425,7 +425,7 @@ final class TransactionFilterBlockTests: XCTestCase {
 
         // Block with fee=10 (meets filter)
         let okFeeBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 10, nonce: 0
         )
@@ -459,7 +459,7 @@ final class GeneralStateBlockTests: XCTestCase {
 
         // Block 1: Insert key-value pair
         let insertBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [Action(key: "greeting", oldValue: nil, newValue: "hello")],
             swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
@@ -474,7 +474,7 @@ final class GeneralStateBlockTests: XCTestCase {
 
         // Block 2: Update the value
         let updateBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward, newBalance: reward + reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [Action(key: "greeting", oldValue: "hello", newValue: "world")],
             swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 1
@@ -488,7 +488,7 @@ final class GeneralStateBlockTests: XCTestCase {
 
         // Block 3: Delete the key
         let deleteBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward * 2, newBalance: reward * 3)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward * 3) - Int64(reward * 2))],
             actions: [Action(key: "greeting", oldValue: "world", newValue: nil)],
             swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 2
@@ -514,7 +514,7 @@ final class GeneralStateBlockTests: XCTestCase {
         )
 
         let insertBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [Action(key: "key1", oldValue: nil, newValue: "value1")],
             swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
@@ -526,7 +526,7 @@ final class GeneralStateBlockTests: XCTestCase {
 
         // Update with wrong oldValue
         let wrongBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward, newBalance: reward + reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [Action(key: "key1", oldValue: "WRONG", newValue: "value2")],
             swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 1
@@ -565,7 +565,7 @@ final class PeerStateBlockTests: XCTestCase {
 
         // Block 1: Register a peer
         let insertBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [],
             swapActions: [], swapClaimActions: [],
             genesisActions: [],
@@ -580,7 +580,7 @@ final class PeerStateBlockTests: XCTestCase {
 
         // Block 2: Update the peer
         let updateBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward, newBalance: reward + reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [],
             swapActions: [], swapClaimActions: [],
             genesisActions: [],
@@ -595,7 +595,7 @@ final class PeerStateBlockTests: XCTestCase {
 
         // Block 3: Delete the peer
         let deleteBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward * 2, newBalance: reward * 3)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward * 3) - Int64(reward * 2))],
             actions: [],
             swapActions: [], swapClaimActions: [],
             genesisActions: [],

@@ -145,39 +145,48 @@ public extension Block {
         let (totalSwapLocked, lockedOverflow) = Block.getTotalSwapLocked(allSwapActions)
         let (totalSwapClaimed, claimedOverflow) = Block.getTotalSwapClaimed(allSwapClaimActions)
         if lockedOverflow || claimedOverflow { return false }
-        var totalBalanceBefore: UInt64 = 0
-        var totalBalanceAfter: UInt64 = 0
+        // With deltas: sum(credits) must not exceed sum(debits) + reward + fees + swapClaimed - swapLocked
+        // Equivalently: net delta (sum of all deltas) must equal reward + fees + swapClaimed - swapLocked
+        var totalCredits: UInt64 = 0
+        var totalDebits: UInt64 = 0
         for action in allAccountActions {
-            let (newBefore, beforeOverflow) = totalBalanceBefore.addingReportingOverflow(action.oldBalance)
-            let (newAfter, afterOverflow) = totalBalanceAfter.addingReportingOverflow(action.newBalance)
-            if beforeOverflow || afterOverflow { return false }
-            totalBalanceBefore = newBefore
-            totalBalanceAfter = newAfter
+            if action.delta > 0 {
+                let (newCredits, overflow) = totalCredits.addingReportingOverflow(UInt64(action.delta))
+                if overflow { return false }
+                totalCredits = newCredits
+            } else if action.delta < 0 {
+                let (newDebits, overflow) = totalDebits.addingReportingOverflow(UInt64(-action.delta))
+                if overflow { return false }
+                totalDebits = newDebits
+            }
         }
-        let (income, incomeOverflow) = totalBalanceBefore.addingReportingOverflow(totalSwapClaimed)
-        let (incomeWithReward, rewardOverflow) = income.addingReportingOverflow(reward)
-        let (incomeWithFees, feeOverflow) = incomeWithReward.addingReportingOverflow(totalFees)
-        if incomeOverflow || rewardOverflow || feeOverflow { return false }
-        guard incomeWithFees >= totalSwapLocked else { return false }
-        let available = incomeWithFees - totalSwapLocked
-        return totalBalanceAfter <= available
+        // Available new funds: debits + reward + fees + swapClaimed - swapLocked
+        let (withReward, r1) = totalDebits.addingReportingOverflow(reward)
+        let (withFees, r2) = withReward.addingReportingOverflow(totalFees)
+        let (withClaimed, r3) = withFees.addingReportingOverflow(totalSwapClaimed)
+        if r1 || r2 || r3 { return false }
+        guard withClaimed >= totalSwapLocked else { return false }
+        let available = withClaimed - totalSwapLocked
+        return totalCredits <= available
     }
 
     func validateBalanceChangesForGenesis(spec: ChainSpec, allSwapActions: [SwapAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
         let (totalSwapLocked, lockedOverflow) = Block.getTotalSwapLocked(allSwapActions)
         if lockedOverflow { return false }
-        var totalBalanceAfter: UInt64 = 0
+        var totalCredits: UInt64 = 0
         for action in allAccountActions {
-            let (newAfter, overflow) = totalBalanceAfter.addingReportingOverflow(action.newBalance)
-            if overflow { return false }
-            totalBalanceAfter = newAfter
+            if action.delta > 0 {
+                let (newCredits, overflow) = totalCredits.addingReportingOverflow(UInt64(action.delta))
+                if overflow { return false }
+                totalCredits = newCredits
+            }
         }
         let (incomeWithFees, overflow) = premineAmount.addingReportingOverflow(totalFees)
         if overflow { return false }
         guard incomeWithFees >= totalSwapLocked else { return false }
         let available = incomeWithFees - totalSwapLocked
-        return totalBalanceAfter <= available
+        return totalCredits <= available
     }
 
     func validateSpec(previousBlock: Block) -> Bool {

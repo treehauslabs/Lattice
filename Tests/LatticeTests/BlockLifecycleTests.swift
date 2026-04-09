@@ -64,7 +64,7 @@ final class BlockMintingTests: XCTestCase {
         let premineAmount = spec.premineAmount()
 
         let body = TransactionBody(
-            accountActions: [AccountAction(owner: owner, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: owner, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [owner], fee: 0, nonce: 0
         )
@@ -130,7 +130,7 @@ final class BlockMintingTests: XCTestCase {
         let premineAmount = spec.premineAmount()
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: senderAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: senderAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [senderAddr], fee: 0, nonce: 0
         )
@@ -143,8 +143,8 @@ final class BlockMintingTests: XCTestCase {
         let transferAmount: UInt64 = 500
         let transferBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: senderAddr, oldBalance: premineAmount, newBalance: premineAmount - transferAmount),
-                AccountAction(owner: receiverAddr, oldBalance: 0, newBalance: transferAmount + reward)
+                AccountAction(owner: senderAddr, delta: Int64(premineAmount - transferAmount) - Int64(premineAmount)),
+                AccountAction(owner: receiverAddr, delta: Int64(transferAmount + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [senderAddr], fee: 0, nonce: 1
@@ -173,7 +173,7 @@ final class BlockMintingTests: XCTestCase {
 
         let reward = spec.rewardAtBlock(0)
         let rewardBody = TransactionBody(
-            accountActions: [AccountAction(owner: minerAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: minerAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: 0
         )
@@ -199,7 +199,7 @@ final class BlockMintingTests: XCTestCase {
 
         let reward = spec.rewardAtBlock(0)
         let overclaimBody = TransactionBody(
-            accountActions: [AccountAction(owner: minerAddr, oldBalance: 0, newBalance: reward + 1)],
+            accountActions: [AccountAction(owner: minerAddr, delta: Int64(reward + 1))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: 0
         )
@@ -267,7 +267,7 @@ final class BlockMintingTests: XCTestCase {
         let reward = spec.initialReward
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: aliceAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
@@ -278,8 +278,8 @@ final class BlockMintingTests: XCTestCase {
 
         let transfer1Body = TransactionBody(
             accountActions: [
-                AccountAction(owner: aliceAddr, oldBalance: premineAmount, newBalance: premineAmount - 100),
-                AccountAction(owner: bobAddr, oldBalance: 0, newBalance: 100 + reward)
+                AccountAction(owner: aliceAddr, delta: Int64(premineAmount - 100) - Int64(premineAmount)),
+                AccountAction(owner: bobAddr, delta: Int64(100 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
@@ -295,8 +295,8 @@ final class BlockMintingTests: XCTestCase {
         let bobBalance1: UInt64 = 100 + reward
         let transfer2Body = TransactionBody(
             accountActions: [
-                AccountAction(owner: bobAddr, oldBalance: bobBalance1, newBalance: bobBalance1 - 50),
-                AccountAction(owner: aliceAddr, oldBalance: aliceBalance1, newBalance: aliceBalance1 + 50 + reward)
+                AccountAction(owner: bobAddr, delta: Int64(bobBalance1 - 50) - Int64(bobBalance1)),
+                AccountAction(owner: aliceAddr, delta: Int64(aliceBalance1 + 50 + reward) - Int64(aliceBalance1))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
@@ -326,7 +326,7 @@ final class CrossChainTests: XCTestCase {
         let reward = childSpec.initialReward
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: depositorAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: depositorAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [depositorAddr], fee: 0, nonce: 0
         )
@@ -338,7 +338,7 @@ final class CrossChainTests: XCTestCase {
         let swapAmount: UInt64 = 500
         let swapBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: depositorAddr, oldBalance: premineAmount, newBalance: premineAmount - swapAmount + reward)
+                AccountAction(owner: depositorAddr, delta: Int64(premineAmount - swapAmount + reward) - Int64(premineAmount))
             ],
             actions: [],
             swapActions: [
@@ -375,7 +375,7 @@ final class CrossChainTests: XCTestCase {
         let swapKeyB = SwapKey(swapAction: SwapAction(nonce: 2, sender: senderBAddr, recipient: senderAAddr, amount: 500, timelock: 1000)).description
         let settleBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: senderAAddr, oldBalance: 0, newBalance: reward)
+                AccountAction(owner: senderAAddr, delta: Int64(reward))
             ],
             actions: [],
             swapActions: [],
@@ -421,7 +421,7 @@ final class CrossChainTests: XCTestCase {
         )
 
         let fundBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -432,7 +432,7 @@ final class CrossChainTests: XCTestCase {
         )
 
         let swapBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: reward, newBalance: reward - 100 + nexusSpec.rewardAtBlock(2))],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward - 100 + nexusSpec.rewardAtBlock(2)) - Int64(reward))],
             actions: [],
             swapActions: [SwapAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: 100, timelock: 1000)],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
@@ -500,7 +500,7 @@ final class CrossChainTests: XCTestCase {
 
         let reward = nexusSpec.rewardAtBlock(0)
         let genesisActionBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, oldBalance: 0, newBalance: reward)],
+            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [],
             swapActions: [],
             swapClaimActions: [],
@@ -583,7 +583,7 @@ final class CrossChainTests: XCTestCase {
         let swapAmount: UInt64 = 500
 
         let childPremineBody = TransactionBody(
-            accountActions: [AccountAction(owner: depositorAddr, oldBalance: 0, newBalance: childPremineAmount)],
+            accountActions: [AccountAction(owner: depositorAddr, delta: Int64(childPremineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [depositorAddr], fee: 0, nonce: 0
         )
@@ -601,7 +601,7 @@ final class CrossChainTests: XCTestCase {
 
         let swapBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: depositorAddr, oldBalance: childPremineAmount, newBalance: childPremineAmount - swapAmount + childReward)
+                AccountAction(owner: depositorAddr, delta: Int64(childPremineAmount - swapAmount + childReward) - Int64(childPremineAmount))
             ],
             actions: [],
             swapActions: [childSwap],
@@ -616,7 +616,7 @@ final class CrossChainTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: depositorAddr, oldBalance: 0, newBalance: nexusReward)
+                AccountAction(owner: depositorAddr, delta: Int64(nexusReward))
             ],
             actions: [],
             swapActions: [],
@@ -653,7 +653,7 @@ final class CrossChainTests: XCTestCase {
         let premineAmount = spec.premineAmount()
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: aliceAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
@@ -665,8 +665,8 @@ final class CrossChainTests: XCTestCase {
         let reward = spec.rewardAtBlock(0)
         let stolenBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: aliceAddr, oldBalance: premineAmount, newBalance: 0),
-                AccountAction(owner: bobAddr, oldBalance: 0, newBalance: premineAmount + reward)
+                AccountAction(owner: aliceAddr, delta: -Int64(premineAmount)),
+                AccountAction(owner: bobAddr, delta: Int64(premineAmount + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [],
@@ -745,7 +745,7 @@ final class BlockLifecycleTests: XCTestCase {
         let reward = spec.initialReward
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: aliceAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
@@ -758,8 +758,8 @@ final class BlockLifecycleTests: XCTestCase {
 
         let transferBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: aliceAddr, oldBalance: premineAmount, newBalance: premineAmount - 1000),
-                AccountAction(owner: bobAddr, oldBalance: 0, newBalance: 1000 + reward)
+                AccountAction(owner: aliceAddr, delta: Int64(premineAmount - 1000) - Int64(premineAmount)),
+                AccountAction(owner: bobAddr, delta: Int64(1000 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
@@ -837,7 +837,7 @@ final class BlockLifecycleTests: XCTestCase {
         let fee: UInt64 = 50
 
         let premineBody = TransactionBody(
-            accountActions: [AccountAction(owner: payerAddr, oldBalance: 0, newBalance: premineAmount)],
+            accountActions: [AccountAction(owner: payerAddr, delta: Int64(premineAmount))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [], signers: [payerAddr], fee: 0, nonce: 0
         )
@@ -848,8 +848,8 @@ final class BlockLifecycleTests: XCTestCase {
 
         let feeBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: payerAddr, oldBalance: premineAmount, newBalance: premineAmount - fee),
-                AccountAction(owner: minerAddr, oldBalance: 0, newBalance: reward + fee)
+                AccountAction(owner: payerAddr, delta: Int64(premineAmount - fee) - Int64(premineAmount)),
+                AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [],
