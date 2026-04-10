@@ -116,7 +116,7 @@ Every `ChainLevel` owns a `ChainState` actor that manages block metadata, fork t
 
 **Three-phase state model.** Each block carries `parentHomestead` (parent chain's state), `homestead` (confirmed state entering the block), and `frontier` (state after applying transactions). This is what makes trustless cross-chain verification possible without querying another chain at validation time.
 
-**Eight partitioned sub-states.** World state is split into eight independent Sparse Merkle Trees (accounts, general KV, deposits, withdrawals, receipts, peers, genesis blocks, transactions). All eight are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
+**Seven partitioned sub-states.** World state is split into seven independent Sparse Merkle Trees (accounts, general KV, swaps, settlements, peers, genesis blocks, transaction nonces). All seven are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
 
 **Actor-based concurrency.** The consensus layer maps directly onto Swift's actor model. Each chain is an isolated actor. Reorganizations propagate through the actor hierarchy without shared mutable state. Swift 6's strict sendability checking catches data races at compile time.
 
@@ -139,11 +139,13 @@ Block arrives
 
 ### Cross-chain value transfer
 
-A three-phase protocol with no trusted intermediaries:
+Atomic swaps between chains use a two-phase protocol:
 
-1. **Deposit** (child chain) — Lock funds in child chain's `DepositState` Merkle tree
-2. **Receipt** (parent chain) — Parent acknowledges the deposit in its `ReceiptState`
-3. **Withdrawal** (child chain) — Claim funds by proving both the deposit and receipt exist via Merkle proofs against committed state roots
+1. **Swap** — Lock funds in the source chain's `SwapState` Merkle tree with a timelock and designated recipient
+2. **Settle** — Both parties prove matching swaps exist on their respective chains, recorded in `SettleState`
+3. **Claim** — Recipient claims funds by proving settlement exists; sender can reclaim after timelock expiry
+
+Cross-chain replay protection is enforced via `chainPath` — each transaction declares the exact chain hierarchy path it targets (e.g., `["Nexus", "Payments"]`). Transactions are rejected if the `chainPath` doesn't match the validating chain.
 
 Full formal specification: [CROSS_CHAIN_PROTOCOL.md](CROSS_CHAIN_PROTOCOL.md)
 
@@ -155,16 +157,19 @@ Each chain defines its own economics via `ChainSpec`:
 
 | Parameter | Description |
 |---|---|
-| `initialRewardExponent` | Block reward = 2^exponent tokens |
+| `initialReward` | Block reward in base units |
+| `halvingInterval` | Blocks between reward halvings |
 | `premine` | Halving schedule offset for chain creators |
 | `targetBlockTime` | Target milliseconds between blocks |
+| `difficultyAdjustmentWindow` | Blocks in difficulty adjustment window |
 | `maxNumberOfTransactionsPerBlock` | Throughput limit |
 | `maxStateGrowth` | Maximum state size increase per block |
+| `maxBlockSize` | Maximum serialized block size in bytes |
 | `transactionFilters` / `actionFilters` | JavaScript expressions for custom validation |
 
-Block rewards halve on a schedule determined by the exponent. The `premine` offsets the halving clock so chain creators can capture early rewards. Total supply converges to `UInt64.max`.
+Block rewards halve on a schedule: `reward(height) = initialReward >> ((height + premine) / halvingInterval)`. The `premine` offsets the halving clock so chain creators can capture early rewards.
 
-Preset configurations: `ChainSpec.bitcoin` (10-min blocks), `ChainSpec.ethereum` (15-sec blocks), `ChainSpec.development` (fast blocks for testing).
+Preset configurations: `ChainSpec.bitcoin` (10-min blocks), `ChainSpec.ethereum` (12-sec blocks), `ChainSpec.development` (fast blocks for testing).
 
 ---
 
@@ -195,10 +200,10 @@ Sources/Lattice/
 ├── Lattice/          Lattice actor, ChainState, ChainLevel
 ├── Block/            Block structure, validation, ChainSpec
 ├── Transaction/      Transaction, TransactionBody, signatures
-├── Actions/          Account, Deposit, Withdrawal, Receipt, Genesis, Peer, Action
-├── State/            LatticeState + 8 sub-state Sparse Merkle Trees
+├── Actions/          Account, Swap, SwapClaim, Settle, Genesis, Peer, Action
+├── State/            LatticeState + 7 sub-state Sparse Merkle Trees
 ├── Core/             PublicKey type
-├── CryptoUtils.swift P-256 ECDSA, SHA-256, key generation
+├── CryptoUtils.swift secp256k1 ECDSA, SHA-256, key generation
 └── UInt256+Extensions.swift
 ```
 
@@ -207,16 +212,17 @@ Sources/Lattice/
 | Primitive | Algorithm | Usage |
 |---|---|---|
 | Hash | SHA-256 | Block hashes, Merkle trees, difficulty, addresses |
-| Signature | P-256 ECDSA | Transaction authorization |
+| Signature | secp256k1 ECDSA | Transaction authorization (33-byte compressed keys, 64-byte compact signatures) |
 | Content addressing | CID (DAG-CBOR + SHA-256) | All data structure references |
-| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 8 sub-states |
+| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 7 sub-states |
 
 ## Dependencies
 
 | Dependency | Purpose |
 |---|---|
 | [cashew](https://github.com/treehauslabs/cashew) | Content-addressed Merkle data structures (IPLD, Sparse Merkle Trees, CIDs, Volumes) |
-| [swift-crypto](https://github.com/apple/swift-crypto) | P-256 ECDSA + SHA-256 |
+| [swift-crypto](https://github.com/apple/swift-crypto) | SHA-256 |
+| [P256K](https://github.com/nicklama/P256K) | secp256k1 ECDSA signatures |
 | [UInt256](https://github.com/treehauslabs/UInt256) | 256-bit integers for difficulty targets |
 | [swift-cid](https://github.com/swift-libp2p/swift-cid) | Content Identifier encoding |
 | [CollectionConcurrencyKit](https://github.com/JohnSundell/CollectionConcurrencyKit) | Concurrent collection operations |
@@ -229,12 +235,14 @@ Sources/Lattice/
 
 - [x] Block validation (genesis, nexus, child chain)
 - [x] Three-phase state model (parentHomestead / homestead / frontier)
-- [x] Eight partitioned Sparse Merkle Tree sub-states with concurrent updates
-- [x] Cross-chain deposit/receipt/withdrawal protocol
+- [x] Seven partitioned Sparse Merkle Tree sub-states with concurrent updates
+- [x] Cross-chain atomic swap/settle protocol
 - [x] Nakamoto fork choice with parent chain anchoring
 - [x] Reorganization propagation through chain hierarchy
 - [x] Configurable ChainSpec with halving schedule and difficulty adjustment
-- [x] P-256 ECDSA transaction signing and verification
+- [x] secp256k1 ECDSA transaction signing and verification
+- [x] Sequential per-signer-group nonces with cross-chain replay protection (chainPath)
+- [x] Stateless block verification (nodes lazy-load state via Fetcher protocol)
 - [x] JavaScript transaction/action filters
 - [x] libp2p networking, peer discovery, block gossip
 - [x] Volume-based data locality hints at Block and Transaction boundaries
@@ -251,7 +259,6 @@ Sources/Lattice/
 - [ ] Cross-chain proof verification on-device
 - [ ] SwiftUI wallet reference implementation
 - [ ] Alternative consensus per chain (PoS, PoA via ChainSpec extension)
-- [ ] Atomic cross-chain swaps
 - [ ] On-chain governance for ChainSpec changes
 - [ ] EIP-1559-style fee market
 - [ ] Block explorer with multi-chain navigation
