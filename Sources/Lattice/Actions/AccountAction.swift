@@ -14,7 +14,7 @@ public struct AccountAction: Codable, Sendable {
     }
 
     public func verify() -> Bool {
-        delta != 0
+        delta != 0 && delta != Int64.min
     }
 
     public var isDebit: Bool { delta < 0 }

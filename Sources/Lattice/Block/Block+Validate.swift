@@ -150,6 +150,7 @@ public extension Block {
         var totalCredits: UInt64 = 0
         var totalDebits: UInt64 = 0
         for action in allAccountActions {
+            if action.delta == Int64.min { return false }
             if action.delta > 0 {
                 let (newCredits, overflow) = totalCredits.addingReportingOverflow(UInt64(action.delta))
                 if overflow { return false }

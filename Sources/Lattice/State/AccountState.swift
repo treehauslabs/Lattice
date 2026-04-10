@@ -16,7 +16,9 @@ public extension AccountStateHeader {
             if netDeltas[action.owner] == nil {
                 ownerOrder.append(action.owner)
             }
-            netDeltas[action.owner, default: 0] += action.delta
+            let (sum, overflow) = netDeltas[action.owner, default: 0].addingReportingOverflow(action.delta)
+            guard !overflow else { throw StateErrors.balanceOverflow }
+            netDeltas[action.owner] = sum
         }
 
         // Remove zero-net-delta owners (no state change needed)
