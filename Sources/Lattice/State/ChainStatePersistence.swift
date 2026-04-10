@@ -38,13 +38,15 @@ public struct PersistedBlockMeta: Codable, Sendable {
     public let blockIndex: UInt64
     public let parentChainBlocks: [String: UInt64?]
     public let childBlockHashes: [String]
+    public let difficulty: String?
 
-    public init(blockHash: String, previousBlockHash: String?, blockIndex: UInt64, parentChainBlocks: [String: UInt64?], childBlockHashes: [String]) {
+    public init(blockHash: String, previousBlockHash: String?, blockIndex: UInt64, parentChainBlocks: [String: UInt64?], childBlockHashes: [String], difficulty: String? = nil) {
         self.blockHash = blockHash
         self.previousBlockHash = previousBlockHash
         self.blockIndex = blockIndex
         self.parentChainBlocks = parentChainBlocks
         self.childBlockHashes = childBlockHashes
+        self.difficulty = difficulty
     }
 }
 
@@ -53,12 +55,17 @@ public extension ChainState {
     func persist() async -> PersistedChainState {
         var blocks: [PersistedBlockMeta] = []
         for (_, meta) in hashToBlock {
+            // Recover difficulty from work: if work > 0, difficulty = MAX / work
+            let diffHex: String? = meta.work > UInt256.zero
+                ? (UInt256.max / meta.work).toHexString()
+                : nil
             blocks.append(PersistedBlockMeta(
                 blockHash: meta.blockHash,
                 previousBlockHash: meta.previousBlockHash,
                 blockIndex: meta.blockIndex,
                 parentChainBlocks: meta.parentChainBlocks,
-                childBlockHashes: meta.childBlockHashes
+                childBlockHashes: meta.childBlockHashes,
+                difficulty: diffHex
             ))
         }
         return PersistedChainState(
@@ -84,11 +91,13 @@ public extension ChainState {
         var hashToBlock: [String: BlockMeta] = [:]
         var indexToBlockHash: [UInt64: Set<String>] = [:]
         for block in persisted.blocks {
+            let difficulty = block.difficulty.flatMap { UInt256($0, radix: 16) } ?? UInt256.zero
             let meta = BlockMeta(
                 blockInfo: BlockInfoImpl(
                     blockHash: block.blockHash,
                     previousBlockHash: block.previousBlockHash,
-                    blockIndex: block.blockIndex
+                    blockIndex: block.blockIndex,
+                    work: workForDifficulty(difficulty)
                 ),
                 parentChainBlocks: block.parentChainBlocks,
                 childBlockHashes: block.childBlockHashes

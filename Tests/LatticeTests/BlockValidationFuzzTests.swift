@@ -57,7 +57,8 @@ extension SeededRNG {
             blockInfo: BlockInfoImpl(
                 blockHash: h,
                 previousBlockHash: previousHash,
-                blockIndex: idx
+                blockIndex: idx,
+                work: UInt256.zero
             ),
             parentChainBlocks: parentBlocks,
             childBlockHashes: []
@@ -233,25 +234,25 @@ final class ForkChoiceFuzzTests: XCTestCase {
     func testCompareWorkAntisymmetry() {
         var rng = SeededRNG(seed: 606)
         for _ in 0..<1000 {
-            let aIdx = UInt64.random(in: 0...1000, using: &rng)
-            let bIdx = UInt64.random(in: 0...1000, using: &rng)
+            let aWork = UInt256(UInt64.random(in: 0...1000, using: &rng))
+            let bWork = UInt256(UInt64.random(in: 0...1000, using: &rng))
             let aParent: UInt64? = rng.randomBool() ? UInt64.random(in: 0...500, using: &rng) : nil
             let bParent: UInt64? = rng.randomBool() ? UInt64.random(in: 0...500, using: &rng) : nil
 
-            let leftBetter = compareWork((aIdx, aParent), (bIdx, bParent))
-            let rightBetter = compareWork((bIdx, bParent), (aIdx, aParent))
+            let leftBetter = compareWork((aWork, aParent), (bWork, bParent))
+            let rightBetter = compareWork((bWork, bParent), (aWork, aParent))
 
             XCTAssertFalse(leftBetter && rightBetter,
-                           "compareWork is not antisymmetric: (\(aIdx),\(String(describing: aParent))) vs (\(bIdx),\(String(describing: bParent)))")
+                           "compareWork is not antisymmetric: (\(aWork),\(String(describing: aParent))) vs (\(bWork),\(String(describing: bParent)))")
         }
     }
 
     func testCompareWorkReflexivity() {
         var rng = SeededRNG(seed: 707)
         for _ in 0..<500 {
-            let idx = UInt64.random(in: 0...1000, using: &rng)
+            let work = UInt256(UInt64.random(in: 0...1000, using: &rng))
             let parent: UInt64? = rng.randomBool() ? UInt64.random(in: 0...500, using: &rng) : nil
-            XCTAssertFalse(compareWork((idx, parent), (idx, parent)),
+            XCTAssertFalse(compareWork((work, parent), (work, parent)),
                            "compareWork should return false for identical inputs")
         }
     }
@@ -259,10 +260,10 @@ final class ForkChoiceFuzzTests: XCTestCase {
     func testCompareWorkTransitivity() {
         var rng = SeededRNG(seed: 808)
         for _ in 0..<500 {
-            let vals: [(UInt64, UInt64?)] = (0..<3).map { _ in
-                let idx = UInt64.random(in: 0...1000, using: &rng)
+            let vals: [(UInt256, UInt64?)] = (0..<3).map { _ in
+                let work = UInt256(UInt64.random(in: 0...1000, using: &rng))
                 let parent: UInt64? = rng.randomBool() ? UInt64.random(in: 0...500, using: &rng) : nil
-                return (idx, parent)
+                return (work, parent)
             }
             let ab = compareWork(vals[0], vals[1])
             let bc = compareWork(vals[1], vals[2])
@@ -635,7 +636,7 @@ final class BlockMetaWeightsFuzzTests: XCTestCase {
                 }
             }
             let meta = BlockMeta(
-                blockInfo: BlockInfoImpl(blockHash: "test", previousBlockHash: nil, blockIndex: 0),
+                blockInfo: BlockInfoImpl(blockHash: "test", previousBlockHash: nil, blockIndex: 0, work: UInt256.zero),
                 parentChainBlocks: parentBlocks,
                 childBlockHashes: []
             )

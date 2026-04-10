@@ -163,20 +163,20 @@ final class ForkChoicePropertyTests: XCTestCase {
 
     // Property: compareWork is irreflexive (no fork is better than itself)
     func testIrreflexivity() {
-        let testCases: [(UInt64, UInt64?)] = [
-            (0, nil), (100, nil), (0, 0), (50, 25), (UInt64.max, 0)
+        let testCases: [(UInt256, UInt64?)] = [
+            (UInt256(0), nil), (UInt256(100), nil), (UInt256(0), 0), (UInt256(50), 25), (UInt256.max, 0)
         ]
-        for (idx, parent) in testCases {
-            XCTAssertFalse(compareWork((idx, parent), (idx, parent)))
+        for (work, parent) in testCases {
+            XCTAssertFalse(compareWork((work, parent), (work, parent)))
         }
     }
 
     // Property: compareWork is asymmetric (if A beats B, B doesn't beat A)
     func testAsymmetry() {
-        let testCases: [((UInt64, UInt64?), (UInt64, UInt64?))] = [
-            ((5, nil), (10, nil)),
-            ((100, nil), (1, 5)),
-            ((10, 100), (10, 50)),
+        let testCases: [((UInt256, UInt64?), (UInt256, UInt64?))] = [
+            ((UInt256(5), nil), (UInt256(10), nil)),
+            ((UInt256(100), nil), (UInt256(1), 5)),
+            ((UInt256(10), 100), (UInt256(10), 50)),
         ]
         for (left, right) in testCases {
             let lr = compareWork(left, right)
@@ -187,12 +187,12 @@ final class ForkChoicePropertyTests: XCTestCase {
         }
     }
 
-    // Property: Parent anchoring always beats no anchoring, regardless of chain length
-    func testAnchoringDominatesLength() {
-        for length: UInt64 in [1, 10, 100, 1000, UInt64.max] {
+    // Property: Parent anchoring always beats no anchoring, regardless of work
+    func testAnchoringDominatesWork() {
+        for work in [UInt256(1), UInt256(10), UInt256(100), UInt256(1000), UInt256.max] {
             for parentIdx: UInt64 in [0, 1, 100, UInt64.max - 1] {
-                XCTAssertTrue(compareWork((length, nil), (1, parentIdx)),
-                              "Anchored chain should beat unanchored length=\(length)")
+                XCTAssertTrue(compareWork((work, nil), (UInt256(1), parentIdx)),
+                              "Anchored chain should beat unanchored work=\(work)")
             }
         }
     }
@@ -202,20 +202,20 @@ final class ForkChoicePropertyTests: XCTestCase {
         for diff: UInt64 in [1, 10, 100] {
             for baseIdx: UInt64 in [0, 50, 500] {
                 let high = baseIdx + diff
-                XCTAssertTrue(compareWork((10, high), (10, baseIdx)),
+                XCTAssertTrue(compareWork((UInt256(10), high), (UInt256(10), baseIdx)),
                               "Lower parent index \(baseIdx) should beat \(high)")
-                XCTAssertFalse(compareWork((10, baseIdx), (10, high)),
+                XCTAssertFalse(compareWork((UInt256(10), baseIdx), (UInt256(10), high)),
                                "Higher parent index \(high) should not beat \(baseIdx)")
             }
         }
     }
 
-    // Property: Among unanchored forks, strictly longer chain wins
-    func testStrictlyLongerWins() {
+    // Property: Among unanchored forks, strictly more work wins
+    func testStrictlyMoreWorkWins() {
         for base: UInt64 in [0, 10, 100] {
             for diff: UInt64 in [1, 5, 50] {
-                XCTAssertTrue(compareWork((base, nil), (base + diff, nil)))
-                XCTAssertFalse(compareWork((base + diff, nil), (base, nil)))
+                XCTAssertTrue(compareWork((UInt256(base), nil), (UInt256(base + diff), nil)))
+                XCTAssertFalse(compareWork((UInt256(base + diff), nil), (UInt256(base), nil)))
             }
         }
     }

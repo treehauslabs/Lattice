@@ -1,6 +1,13 @@
 import cashew
 import UInt256
 
+/// Compute proof-of-work for a given difficulty target.
+/// Higher difficulty value = easier target; work is inversely proportional.
+public func workForDifficulty(_ difficulty: UInt256) -> UInt256 {
+    guard difficulty > UInt256.zero else { return UInt256.zero }
+    return UInt256.max / difficulty
+}
+
 public let RECENT_BLOCK_DISTANCE: UInt64 = UInt64.max
 public typealias BlockHeader = VolumeImpl<Block>
 
@@ -23,6 +30,7 @@ public struct BlockInfoImpl: BlockInfo, Sendable {
     public let blockHash: String
     public let previousBlockHash: String?
     public let blockIndex: UInt64
+    public let work: UInt256
 }
 
 public struct BlockMeta: ConsensusBlock, Sendable {
@@ -34,6 +42,7 @@ public struct BlockMeta: ConsensusBlock, Sendable {
     public var blockIndex: UInt64 { blockInfo.blockIndex }
     public var previousBlockHash: String? { blockInfo.previousBlockHash }
     public var blockHash: String { blockInfo.blockHash }
+    public var work: UInt256 { blockInfo.work }
 
     public var parentIndex: UInt64? { cachedParentIndex }
 
@@ -94,24 +103,30 @@ public struct Reorganization: Sendable {
 
 public struct CachedChainWork: Sendable {
     public let tipHash: String
-    public let highestIndex: UInt64
+    public let cumulativeWork: UInt256
     public let lowestParentIndex: UInt64?
 }
 
 // MARK: - Fork Choice
 
+/// Returns true if `right` has more work than `left`.
+/// Primary: parent chain anchoring (lower parentIndex = earlier anchor = wins).
+/// Secondary: cumulative proof-of-work (higher = wins).
 public func compareWork(
-    _ left: (highestIndex: UInt64, parentIndex: UInt64?),
-    _ right: (highestIndex: UInt64, parentIndex: UInt64?)
+    _ left: (cumulativeWork: UInt256, parentIndex: UInt64?),
+    _ right: (cumulativeWork: UInt256, parentIndex: UInt64?)
 ) -> Bool {
     if let rightParent = right.parentIndex {
         if let leftParent = left.parentIndex {
-            return rightParent < leftParent
+            if rightParent != leftParent {
+                return rightParent < leftParent
+            }
+            return right.cumulativeWork > left.cumulativeWork
         }
         return true
     }
     if left.parentIndex == nil {
-        return right.highestIndex > left.highestIndex
+        return right.cumulativeWork > left.cumulativeWork
     }
     return false
 }
@@ -195,11 +210,13 @@ public actor ChainState {
         var newHashToBlock: [String: BlockMeta] = [:]
         var newIndexToBlockHash: [UInt64: Set<String>] = [:]
         for block in persisted.blocks {
+            let difficulty = block.difficulty.flatMap { UInt256($0, radix: 16) } ?? UInt256.zero
             let meta = BlockMeta(
                 blockInfo: BlockInfoImpl(
                     blockHash: block.blockHash,
                     previousBlockHash: block.previousBlockHash,
-                    blockIndex: block.blockIndex
+                    blockIndex: block.blockIndex,
+                    work: workForDifficulty(difficulty)
                 ),
                 parentChainBlocks: block.parentChainBlocks,
                 childBlockHashes: block.childBlockHashes
@@ -231,7 +248,8 @@ public actor ChainState {
             blockInfo: BlockInfoImpl(
                 blockHash: blockHash,
                 previousBlockHash: nil,
-                blockIndex: 0
+                blockIndex: 0,
+                work: workForDifficulty(block.difficulty)
             ),
             parentChainBlocks: [:],
             childBlockHashes: []
@@ -310,6 +328,7 @@ public actor ChainState {
         block: Block
     ) -> SubmissionResult {
         let blockHash = blockHeader.rawCID
+        let difficulty = block.difficulty
 
         let (indexPlusRetention, overflow1) = block.index.addingReportingOverflow(retentionDepth)
         if !overflow1 && indexPlusRetention < highestBlockIndex {
@@ -329,7 +348,8 @@ public actor ChainState {
         let result = insertBlock(
             parentBlockHeaderAndIndex: parentBlockHeaderAndIndex,
             blockHash: blockHash,
-            block: block
+            block: block,
+            difficulty: difficulty
         )
         if !result.addedBlock { return result }
 
@@ -366,7 +386,8 @@ public actor ChainState {
     func insertBlock(
         parentBlockHeaderAndIndex: (String, UInt64?)?,
         blockHash: String,
-        block: Block
+        block: Block,
+        difficulty: UInt256
     ) -> SubmissionResult {
         addToBlockIndex(hash: blockHash, blockIndex: block.index)
 
@@ -374,7 +395,8 @@ public actor ChainState {
             blockInfo: BlockInfoImpl(
                 blockHash: blockHash,
                 previousBlockHash: block.previousBlock?.rawCID,
-                blockIndex: block.index
+                blockIndex: block.index,
+                work: workForDifficulty(difficulty)
             ),
             parentChainBlocks: parentBlockHeaderAndIndex.map { [$0.0: $0.1] } ?? [:],
             childBlockHashes: findChildren(hash: blockHash, blockIndex: block.index)
@@ -471,7 +493,8 @@ public actor ChainState {
             tempResult = insertBlock(
                 parentBlockHeaderAndIndex: parentBlockHeaderAndIndex,
                 blockHash: blockHash,
-                block: block
+                block: block,
+                difficulty: block.difficulty
             )
         }
 
@@ -533,7 +556,7 @@ public actor ChainState {
     // MARK: - Shared Reorg Evaluation
 
     private func findBestReorg(among orphans: [BlockMeta]) -> Reorganization? {
-        var bestWork: (highestIndex: UInt64, parentIndex: UInt64?)? = nil
+        var bestWork: (cumulativeWork: UInt256, parentIndex: UInt64?)? = nil
         var bestBlocks: Set<String> = Set()
         var bestForkIndex: UInt64 = 0
 
@@ -542,17 +565,17 @@ public actor ChainState {
             let mainWork = mainChainWork(fromIndex: orphan.blockIndex)
 
             if compareWork(
-                (mainWork.highestIndex, mainWork.parentIndex),
-                (forkWork.highestIndex, forkWork.parentIndex)
+                (mainWork.cumulativeWork, mainWork.parentIndex),
+                (forkWork.cumulativeWork, forkWork.parentIndex)
             ) {
                 if let current = bestWork {
-                    if compareWork(current, (forkWork.highestIndex, forkWork.parentIndex)) {
-                        bestWork = (forkWork.highestIndex, forkWork.parentIndex)
+                    if compareWork(current, (forkWork.cumulativeWork, forkWork.parentIndex)) {
+                        bestWork = (forkWork.cumulativeWork, forkWork.parentIndex)
                         bestBlocks = forkWork.blocks
                         bestForkIndex = orphan.blockIndex
                     }
                 } else {
-                    bestWork = (forkWork.highestIndex, forkWork.parentIndex)
+                    bestWork = (forkWork.cumulativeWork, forkWork.parentIndex)
                     bestBlocks = forkWork.blocks
                     bestForkIndex = orphan.blockIndex
                 }
@@ -560,9 +583,13 @@ public actor ChainState {
         }
 
         if bestWork != nil {
+            let tipHash = bestBlocks.first(where: { hash in
+                guard let b = hashToBlock[hash] else { return false }
+                return b.childBlockHashes.allSatisfy { !bestBlocks.contains($0) }
+            })
             return applyReorg(
                 newForkBlocks: bestBlocks,
-                newForkHighestIndex: bestWork!.highestIndex,
+                newForkTipHash: tipHash,
                 mainChainBlocks: mainChainHashesFrom(index: bestForkIndex)
             )
         }
@@ -639,7 +666,7 @@ public actor ChainState {
 
     func chainWithMostWork(
         startingBlock: BlockMeta
-    ) -> (highestIndex: UInt64, parentIndex: UInt64?, blocks: Set<String>) {
+    ) -> (cumulativeWork: UInt256, parentIndex: UInt64?, blocks: Set<String>) {
         if let cached = bestChainCache[startingBlock.blockHash],
            hashToBlock[cached.tipHash] != nil
         {
@@ -647,11 +674,12 @@ public actor ChainState {
                 from: startingBlock.blockHash,
                 toTip: cached.tipHash
             )
-            return (cached.highestIndex, cached.lowestParentIndex, blocks)
+            return (cached.cumulativeWork, cached.lowestParentIndex, blocks)
         }
 
         var current = startingBlock
         var lowestParent = startingBlock.cachedParentIndex
+        var cumWork = startingBlock.work
         var blocks: Set<String> = [current.blockHash]
         var children = current.childBlockHashes
 
@@ -663,18 +691,22 @@ public actor ChainState {
                 let others = children.compactMap { hashToBlock[$0] }
                 let best = bestForkAmong(first: first, others: others)
                 let finalParent = minOptional(best.parentIndex, lowestParent)
+                let totalWork = cumWork &+ best.cumulativeWork
                 let allBlocks = best.blocks.union(blocks)
-                let tipHash = indexToBlockHash[best.highestIndex]?
-                    .first(where: { best.blocks.contains($0) }) ?? current.blockHash
+                let tipHash = allBlocks.first(where: { hash in
+                    guard let b = hashToBlock[hash] else { return false }
+                    return b.childBlockHashes.allSatisfy { !allBlocks.contains($0) }
+                }) ?? current.blockHash
                 bestChainCache[startingBlock.blockHash] = CachedChainWork(
                     tipHash: tipHash,
-                    highestIndex: best.highestIndex,
+                    cumulativeWork: totalWork,
                     lowestParentIndex: finalParent
                 )
-                return (best.highestIndex, finalParent, allBlocks)
+                return (totalWork, finalParent, allBlocks)
             }
 
             current = first
+            cumWork = cumWork &+ current.work
             blocks.insert(current.blockHash)
             lowestParent = minOptional(lowestParent, current.cachedParentIndex)
             children = current.childBlockHashes
@@ -682,22 +714,22 @@ public actor ChainState {
 
         bestChainCache[startingBlock.blockHash] = CachedChainWork(
             tipHash: current.blockHash,
-            highestIndex: current.blockIndex,
+            cumulativeWork: cumWork,
             lowestParentIndex: lowestParent
         )
-        return (current.blockIndex, lowestParent, blocks)
+        return (cumWork, lowestParent, blocks)
     }
 
     func bestForkAmong(
         first: BlockMeta,
         others: [BlockMeta]
-    ) -> (highestIndex: UInt64, parentIndex: UInt64?, blocks: Set<String>) {
+    ) -> (cumulativeWork: UInt256, parentIndex: UInt64?, blocks: Set<String>) {
         var best = chainWithMostWork(startingBlock: first)
         for fork in others {
             let work = chainWithMostWork(startingBlock: fork)
             if compareWork(
-                (best.highestIndex, best.parentIndex),
-                (work.highestIndex, work.parentIndex)
+                (best.cumulativeWork, best.parentIndex),
+                (work.cumulativeWork, work.parentIndex)
             ) {
                 best = work
             }
@@ -707,10 +739,11 @@ public actor ChainState {
 
     func mainChainWork(
         fromIndex blockIndex: UInt64
-    ) -> (highestIndex: UInt64, parentIndex: UInt64?, blocks: Set<String>) {
+    ) -> (cumulativeWork: UInt256, parentIndex: UInt64?, blocks: Set<String>) {
         var currentHash = chainTip
         var current = highestBlock
         var lowestParent = current.cachedParentIndex
+        var cumWork = current.work
         var blocks: Set<String> = [currentHash]
 
         while current.blockIndex > blockIndex {
@@ -718,11 +751,12 @@ public actor ChainState {
             guard let prev = hashToBlock[prevHash] else { break }
             currentHash = prevHash
             current = prev
+            cumWork = cumWork &+ current.work
             blocks.insert(currentHash)
             lowestParent = minOptional(lowestParent, current.cachedParentIndex)
         }
 
-        return (highestBlockIndex, lowestParent, blocks)
+        return (cumWork, lowestParent, blocks)
     }
 
     // MARK: - Reorganization
@@ -739,12 +773,15 @@ public actor ChainState {
         let forkWork = chainWithMostWork(startingBlock: earliest)
 
         if compareWork(
-            (mainWork.highestIndex, mainWork.parentIndex),
-            (forkWork.highestIndex, forkWork.parentIndex)
+            (mainWork.cumulativeWork, mainWork.parentIndex),
+            (forkWork.cumulativeWork, forkWork.parentIndex)
         ) {
             return applyReorg(
                 newForkBlocks: forkWork.blocks,
-                newForkHighestIndex: forkWork.highestIndex,
+                newForkTipHash: forkWork.blocks.first(where: { hash in
+                    guard let b = hashToBlock[hash] else { return false }
+                    return b.childBlockHashes.allSatisfy { !forkWork.blocks.contains($0) }
+                }),
                 mainChainBlocks: mainWork.blocks
             )
         }
@@ -753,21 +790,20 @@ public actor ChainState {
 
     func applyReorg(
         newForkBlocks: Set<String>,
-        newForkHighestIndex: UInt64,
+        newForkTipHash: String?,
         mainChainBlocks: Set<String>
     ) -> Reorganization {
         var forkHashToIndex: [String: UInt64] = [:]
-        var newTip = chainTip
+        var highestIndex: UInt64 = 0
 
         for hash in newForkBlocks {
             let idx = hashToBlock[hash]!.blockIndex
             forkHashToIndex[hash] = idx
-            if idx == newForkHighestIndex {
-                newTip = hash
-            }
+            if idx > highestIndex { highestIndex = idx }
         }
 
-        advanceTip(to: newTip, newHighestIndex: newForkHighestIndex)
+        let newTip = newForkTipHash ?? chainTip
+        advanceTip(to: newTip, newHighestIndex: highestIndex)
 
         for hash in mainChainBlocks {
             mainChainHashes.remove(hash)
@@ -788,9 +824,13 @@ public actor ChainState {
 
     func setNewTip(block: BlockMeta) {
         let chain = chainWithMostWork(startingBlock: block)
-        if let tipHash = indexToBlockHash[chain.highestIndex]?.first(
-            where: chain.blocks.contains
-        ) {
+        // Find the leaf node (tip) of this chain — the block whose children
+        // are all outside the chain set.
+        let tipHash = chain.blocks.first(where: { hash in
+            guard let b = hashToBlock[hash] else { return false }
+            return b.childBlockHashes.allSatisfy { !chain.blocks.contains($0) }
+        })
+        if let tipHash = tipHash {
             chainTip = tipHash
             for hash in chain.blocks {
                 mainChainHashes.insert(hash)

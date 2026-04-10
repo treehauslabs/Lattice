@@ -1,5 +1,6 @@
 import XCTest
 @testable import Lattice
+import UInt256
 
 // MARK: - Test Helpers
 
@@ -8,13 +9,15 @@ func makeBlockMeta(
     previousHash: String? = nil,
     index: UInt64,
     parentChainBlocks: [String: UInt64?] = [:],
-    childBlockHashes: [String] = []
+    childBlockHashes: [String] = [],
+    work: UInt256 = UInt256(1)
 ) -> BlockMeta {
     BlockMeta(
         blockInfo: BlockInfoImpl(
             blockHash: hash,
             previousBlockHash: previousHash,
-            blockIndex: index
+            blockIndex: index,
+            work: work
         ),
         parentChainBlocks: parentChainBlocks,
         childBlockHashes: childBlockHashes
@@ -69,39 +72,40 @@ func makeLinearChain(length: Int, prefix: String = "block") -> (ChainState, [Blo
 
 final class CompareWorkTests: XCTestCase {
 
-    func testLongerChainWinsWithNoParent() {
-        XCTAssertTrue(compareWork((5, nil), (10, nil)))
-        XCTAssertFalse(compareWork((10, nil), (5, nil)))
+    func testMoreWorkWinsWithNoParent() {
+        XCTAssertTrue(compareWork((UInt256(5), nil), (UInt256(10), nil)))
+        XCTAssertFalse(compareWork((UInt256(10), nil), (UInt256(5), nil)))
     }
 
-    func testEqualLengthNoParentIsNotBetter() {
-        XCTAssertFalse(compareWork((10, nil), (10, nil)))
+    func testEqualWorkNoParentIsNotBetter() {
+        XCTAssertFalse(compareWork((UInt256(10), nil), (UInt256(10), nil)))
     }
 
     func testParentAnchoringBeatsNoAnchoring() {
-        XCTAssertTrue(compareWork((100, nil), (5, 50)))
+        XCTAssertTrue(compareWork((UInt256(100), nil), (UInt256(5), 50)))
     }
 
     func testNoAnchoringCannotBeatAnchoring() {
-        XCTAssertFalse(compareWork((5, 50), (100, nil)))
+        XCTAssertFalse(compareWork((UInt256(5), 50), (UInt256(100), nil)))
     }
 
     func testLowerParentIndexWins() {
-        XCTAssertTrue(compareWork((10, 100), (10, 50)))
-        XCTAssertFalse(compareWork((10, 50), (10, 100)))
+        XCTAssertTrue(compareWork((UInt256(10), 100), (UInt256(10), 50)))
+        XCTAssertFalse(compareWork((UInt256(10), 50), (UInt256(10), 100)))
     }
 
-    func testEqualParentIndexIsNotBetter() {
-        XCTAssertFalse(compareWork((10, 50), (20, 50)))
+    func testEqualParentIndexHigherWorkWins() {
+        XCTAssertTrue(compareWork((UInt256(10), 50), (UInt256(20), 50)))
+        XCTAssertFalse(compareWork((UInt256(20), 50), (UInt256(10), 50)))
     }
 
     func testParentIndexZeroBeatsAll() {
-        XCTAssertTrue(compareWork((1000, 1), (1, 0)))
+        XCTAssertTrue(compareWork((UInt256(1000), 1), (UInt256(1), 0)))
     }
 
     func testAsymmetry() {
-        XCTAssertTrue(compareWork((10, nil), (20, nil)))
-        XCTAssertFalse(compareWork((20, nil), (10, nil)))
+        XCTAssertTrue(compareWork((UInt256(10), nil), (UInt256(20), nil)))
+        XCTAssertFalse(compareWork((UInt256(20), nil), (UInt256(10), nil)))
     }
 }
 
@@ -441,7 +445,7 @@ final class ChainWithMostWorkTests: XCTestCase {
         let g = makeBlockMeta(hash: "G", index: 0)
         let chain = makeChain(blocks: [g])
         let work = await chain.chainWithMostWork(startingBlock: g)
-        XCTAssertEqual(work.highestIndex, 0)
+        XCTAssertEqual(work.cumulativeWork, UInt256(1))
         XCTAssertNil(work.parentIndex)
         XCTAssertEqual(work.blocks, Set(["G"]))
     }
@@ -449,11 +453,11 @@ final class ChainWithMostWorkTests: XCTestCase {
     func testLinearChainWork() async {
         let (chain, blocks) = makeLinearChain(length: 4)
         let work = await chain.chainWithMostWork(startingBlock: blocks[0])
-        XCTAssertEqual(work.highestIndex, 3)
+        XCTAssertEqual(work.cumulativeWork, UInt256(4))
         XCTAssertEqual(work.blocks.count, 4)
     }
 
-    func testForkedChainPicksLonger() async {
+    func testForkedChainPicksMoreWork() async {
         let g = makeBlockMeta(hash: "G", index: 0, childBlockHashes: ["A1", "B1"])
         let a1 = makeBlockMeta(hash: "A1", previousHash: "G", index: 1, childBlockHashes: ["A2"])
         let a2 = makeBlockMeta(hash: "A2", previousHash: "A1", index: 2)
@@ -463,7 +467,7 @@ final class ChainWithMostWorkTests: XCTestCase {
 
         let chain = makeChain(blocks: [g, a1, a2, b1, b2, b3])
         let work = await chain.chainWithMostWork(startingBlock: g)
-        XCTAssertEqual(work.highestIndex, 3)
+        XCTAssertEqual(work.cumulativeWork, UInt256(4))
         XCTAssertTrue(work.blocks.contains("B3"))
         XCTAssertFalse(work.blocks.contains("A1"))
     }

@@ -12,6 +12,9 @@ public struct ChainSpec: Scalar {
     public let initialReward: UInt64
     public let halvingInterval: UInt64
     public static let maxDifficultyChange: UInt8 = 2
+    // Ceiling on difficulty value (higher = easier). Requires ~65,536 hash
+    // attempts minimum, preventing abandoned chains from being trivially mined.
+    public static let maximumDifficulty: UInt256 = UInt256.max >> 16
     public let difficultyAdjustmentWindow: UInt64
     public let transactionFilters: [String]
     public let actionFilters: [String]
@@ -134,15 +137,19 @@ public extension ChainSpec {
 
     func calculatePairDifficulty(previousDifficulty: UInt256, actualTime: Int64) -> UInt256 {
         let targetTime = Int64(targetBlockTime)
-        if actualTime <= 0 { return previousDifficulty / UInt256(ChainSpec.maxDifficultyChange) }
-        if actualTime < targetTime {
+        let adjusted: UInt256
+        if actualTime <= 0 {
+            adjusted = previousDifficulty / UInt256(ChainSpec.maxDifficultyChange)
+        } else if actualTime < targetTime {
             let adjustmentFactor = min(Int64(ChainSpec.maxDifficultyChange), targetTime / max(actualTime, 1))
-            return previousDifficulty / UInt256(adjustmentFactor)
+            adjusted = previousDifficulty / UInt256(adjustmentFactor)
         } else if actualTime > targetTime {
             let adjustmentFactor = min(Int64(ChainSpec.maxDifficultyChange), actualTime / targetTime)
-            return previousDifficulty * UInt256(adjustmentFactor)
+            adjusted = previousDifficulty * UInt256(adjustmentFactor)
+        } else {
+            adjusted = previousDifficulty
         }
-        return previousDifficulty
+        return min(adjusted, ChainSpec.maximumDifficulty)
     }
 
     func calculateMinimumDifficulty(previousDifficulty: UInt256, blockTimestamp: Int64, previousTimestamp: Int64) -> UInt256 {
