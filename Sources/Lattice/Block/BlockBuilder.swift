@@ -104,21 +104,33 @@ public struct BlockBuilder {
         targetDifficulty: UInt256,
         maxAttempts: UInt64 = UInt64.max
     ) -> Block? {
+        let sep: [UInt8] = [0x00]
         var prefix = Data()
         prefix.reserveCapacity(512)
         if let previousBlockCID = block.previousBlock?.rawCID {
             prefix.append(contentsOf: previousBlockCID.utf8)
         }
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.transactions.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.difficulty.toHexString().utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.nextDifficulty.toHexString().utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.spec.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.parentHomestead.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.homestead.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.frontier.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: block.childBlocks.rawCID.utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: String(block.index).utf8)
+        prefix.append(contentsOf: sep)
         prefix.append(contentsOf: String(block.timestamp).utf8)
+        prefix.append(contentsOf: sep)
 
         for nonce in 0..<maxAttempts {
             var data = prefix

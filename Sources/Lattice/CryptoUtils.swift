@@ -33,8 +33,11 @@ public struct CryptoUtils {
 
     public static func verify(message: String, signature: String, publicKeyHex: String) -> Bool {
         guard let publicKeyData = Data(hex: publicKeyHex),
+              publicKeyData.count == 33,
+              publicKeyData[0] == 0x02 || publicKeyData[0] == 0x03,
               let publicKey = try? P256K.Signing.PublicKey(dataRepresentation: publicKeyData, format: .compressed),
               let signatureData = Data(hex: signature),
+              signatureData.count == 64,
               let ecdsaSignature = try? P256K.Signing.ECDSASignature(compactRepresentation: signatureData) else {
             return false
         }

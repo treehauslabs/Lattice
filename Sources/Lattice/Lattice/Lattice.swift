@@ -166,7 +166,7 @@ public actor ChainLevel {
 
         if let previousBlockHeader = childBlock.previousBlock {
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
-                return true
+                return false
             }
             if previousBlock.spec.rawCID != childBlock.spec.rawCID { return false }
             if previousBlock.frontier.rawCID != childBlock.homestead.rawCID { return false }

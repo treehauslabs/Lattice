@@ -49,17 +49,20 @@ public struct Transaction {
     func signaturesMatchSigners() -> Bool {
         guard let bodyNode = body.node else { return false }
         let signatureHashes = Set(signatures.keys.map { HeaderImpl<PublicKey>(node: PublicKey(key: $0)).rawCID })
-        for signer in bodyNode.signers {
-            if !signatureHashes.contains(signer) { return false }
-        }
-        return true
+        let signerSet = Set(bodyNode.signers)
+        return signatureHashes == signerSet
+    }
+
+    private func validateSignaturesAndResolve(fetcher: Fetcher) async throws -> TransactionBody? {
+        if !signaturesAreValid() { return nil }
+        let _ = try await body.resolve(fetcher: fetcher)
+        guard let bodyNode = body.node else { throw ValidationErrors.transactionNotResolved }
+        if !signaturesMatchSigners() { return nil }
+        return bodyNode
     }
 
     func validateTransactionForGenesis(fetcher: Fetcher) async throws -> Bool {
-        if !signaturesAreValid() { return false }
-        let resolvedBody = try await body.resolve(fetcher: fetcher)
-        if !signaturesMatchSigners() { return false }
-        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.swapActions.isEmpty { return false }
         if !bodyNode.swapClaimActions.isEmpty { return false }
@@ -68,30 +71,24 @@ public struct Transaction {
     }
 
     func validateTransactionForNexus(directory: String, homestead: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
-        if !signaturesAreValid() { return false }
-        let resolvedBody = try await body.resolve(fetcher: fetcher)
-        if !signaturesMatchSigners() { return false }
-        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
         if bodyNode.chainPath != [directory] { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }
         if !bodyNode.swapClaimActionsAreValid() { return false }
-        if try await !bodyNode.swapClaimsAreValidForNexus(directory: directory, homestead: homestead, blockIndex: blockIndex, fetcher: fetcher) { return false }
+        if try await !bodyNode.validateSwapClaims(directory: directory, settleState: homestead.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
         return true
     }
 
     func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, chainPath: [String], fetcher: Fetcher) async throws -> Bool {
-        if !signaturesAreValid() { return false }
-        let resolvedBody = try await body.resolve(fetcher: fetcher)
-        if !signaturesMatchSigners() { return false }
-        guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
         if bodyNode.chainPath != chainPath { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }
         if !bodyNode.swapClaimActionsAreValid() { return false }
-        if try await !bodyNode.swapClaimsAreValid(directory: directory, homestead: homestead, parentState: parentState, blockIndex: blockIndex, fetcher: fetcher) { return false }
+        if try await !bodyNode.validateSwapClaims(directory: directory, settleState: parentState.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
         return true
     }
 }
@@ -107,6 +104,6 @@ extension Transaction: Node {
     }
 
     public func set(properties: [PathSegment : any cashew.Header]) -> Transaction {
-        return Self(signatures: signatures, body: properties[TRANSACTION_BODY_PROPERTY] as! HeaderImpl<TransactionBody>)
+        return Self(signatures: signatures, body: properties[TRANSACTION_BODY_PROPERTY] as? HeaderImpl<TransactionBody> ?? body)
     }
 }

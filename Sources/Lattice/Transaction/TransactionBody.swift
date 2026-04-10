@@ -105,7 +105,7 @@ public struct TransactionBody: Scalar {
         return true
     }
 
-    func swapClaimsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
+    func validateSwapClaims(directory: String, settleState: SettleStateHeader, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
         if swapClaimActions.isEmpty { return true }
         for swapClaimAction in swapClaimActions {
             if swapClaimAction.isRefund {
@@ -114,21 +114,7 @@ public struct TransactionBody: Scalar {
         }
         let claims = swapClaimActions.filter { !$0.isRefund }
         if !claims.isEmpty {
-            let _ = try await parentState.settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
-        }
-        return true
-    }
-
-    func swapClaimsAreValidForNexus(directory: String, homestead: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
-        if swapClaimActions.isEmpty { return true }
-        for swapClaimAction in swapClaimActions {
-            if swapClaimAction.isRefund {
-                if blockIndex <= swapClaimAction.timelock { return false }
-            }
-        }
-        let claims = swapClaimActions.filter { !$0.isRefund }
-        if !claims.isEmpty {
-            let _ = try await homestead.settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
+            let _ = try await settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
         }
         return true
     }

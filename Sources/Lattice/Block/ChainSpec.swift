@@ -165,8 +165,10 @@ public extension ChainSpec {
         let oldest = sorted.last!
         let totalTime = newest - oldest
         let blockCount = Int64(sorted.count - 1)
-        guard blockCount > 0 && totalTime > 0 else { return previousDifficulty }
-        let averageTime = totalTime / blockCount
+        guard blockCount > 0 else { return previousDifficulty }
+        // totalTime <= 0 means blocks produced at same or decreasing timestamps;
+        // treat as "blocks too fast" — calculatePairDifficulty handles actualTime <= 0
+        let averageTime = totalTime > 0 ? totalTime / blockCount : Int64(0)
         return calculatePairDifficulty(previousDifficulty: previousDifficulty, actualTime: averageTime)
     }
 

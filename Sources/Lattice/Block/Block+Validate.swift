@@ -5,22 +5,35 @@ import UInt256
 import CollectionConcurrencyKit
 
 public extension Block {
+    private static let fieldSeparator: [UInt8] = [0x00]
+
     func getDifficultyHash() -> UInt256 {
         var data = Data()
         data.reserveCapacity(512)
         if let previousBlockCID = previousBlock?.rawCID {
             data.append(contentsOf: previousBlockCID.utf8)
         }
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: transactions.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: difficulty.toHexString().utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: nextDifficulty.toHexString().utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: spec.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: parentHomestead.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: homestead.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: frontier.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: childBlocks.rawCID.utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: String(index).utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: String(timestamp).utf8)
+        data.append(contentsOf: Block.fieldSeparator)
         data.append(contentsOf: String(nonce).utf8)
         return UInt256.hash(data)
     }
@@ -44,12 +57,12 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = Block.getAllAccountActions(transactionBodies)
-        let allSwapActions = Block.getAllSwapActions(transactionBodies)
-        let genesisTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
-        if try !validateBalanceChangesForGenesis(spec: specNode, allSwapActions: allSwapActions, allAccountActions: allAccountActions, totalFees: genesisTotalFees) { return false }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
+        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
+        if try !validateBalanceChangesForGenesis(spec: specNode, allSwapActions: allSwapActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allSwapActions: [], allSwapClaimActions: [], allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allSettleActions: [], fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: [], allSwapClaimActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: [], fetcher: fetcher) { return false }
         return true
     }
 
@@ -84,13 +97,13 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = Block.getAllAccountActions(transactionBodies)
-        let allSwapActions = Block.getAllSwapActions(transactionBodies)
-        let allSwapClaimActions = Block.getAllSwapClaimActions(transactionBodies)
-        let nexusTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
-        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: nexusTotalFees) { return false }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
+        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions }
+        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
+        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allSettleActions: Block.getAllSettleActions(transactionBodies), fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: transactionBodies.flatMap { $0.settleActions }, fetcher: fetcher) { return false }
         return true
     }
 
@@ -131,18 +144,18 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let allAccountActions = Block.getAllAccountActions(transactionBodies)
-        let allSwapActions = Block.getAllSwapActions(transactionBodies)
-        let allSwapClaimActions = Block.getAllSwapClaimActions(transactionBodies)
-        let childTotalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
-        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: childTotalFees) { return false }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
+        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions }
+        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
+        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: Block.getAllActions(transactionBodies), allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allSettleActions: Block.getAllSettleActions(transactionBodies), fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: transactionBodies.flatMap { $0.settleActions }, fetcher: fetcher) { return false }
         return true
     }
 
     func validateFrontierState(transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> Bool {
-        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: Block.getAllAccountActions(transactionBodies), allActions: Block.getAllActions(transactionBodies), allSwapActions: Block.getAllSwapActions(transactionBodies), allSwapClaimActions: Block.getAllSwapClaimActions(transactionBodies), allGenesisActions: Block.getAllGenesisActions(transactionBodies), allPeerActions: Block.getAllPeerActions(transactionBodies), allSettleActions: Block.getAllSettleActions(transactionBodies), fetcher: fetcher)
+        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: transactionBodies.flatMap { $0.swapActions }, allSwapClaimActions: transactionBodies.flatMap { $0.swapClaimActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: transactionBodies.flatMap { $0.settleActions }, fetcher: fetcher)
     }
 
     func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allSettleActions: [SettleAction], fetcher: Fetcher) async throws -> Bool {
@@ -242,9 +255,10 @@ public extension Block {
         let maxDrift: Int64 = 2 * 60 * 60 * 1000
         if now - timestamp > maxDrift { return false }
         // Median-time-past: new blocks must have timestamp > median of recent ancestors
-        if ancestorTimestamps.count >= 3 {
+        if !ancestorTimestamps.isEmpty {
             let sorted = ancestorTimestamps.sorted()
-            let median = sorted[sorted.count / 2]
+            let medianIndex = (sorted.count - 1) / 2
+            let median = sorted[medianIndex]
             if timestamp <= median { return false }
         }
         return true

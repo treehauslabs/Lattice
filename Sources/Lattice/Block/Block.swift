@@ -82,33 +82,6 @@ public struct Block: Hashable {
     }
 
 
-    public static func getAllAccountActions(_ transactionBodies: [TransactionBody]) -> [AccountAction] {
-        transactionBodies.flatMap { $0.accountActions }
-    }
-
-    public static func getAllSwapActions(_ transactionBodies: [TransactionBody]) -> [SwapAction] {
-        transactionBodies.flatMap { $0.swapActions }
-    }
-
-    public static func getAllSwapClaimActions(_ transactionBodies: [TransactionBody]) -> [SwapClaimAction] {
-        transactionBodies.flatMap { $0.swapClaimActions }
-    }
-
-    public static func getAllActions(_ transactionBodies: [TransactionBody]) -> [Action] {
-        transactionBodies.flatMap { $0.actions }
-    }
-
-    public static func getAllGenesisActions(_ transactionBodies: [TransactionBody]) -> [GenesisAction] {
-        transactionBodies.flatMap { $0.genesisActions }
-    }
-
-    public static func getAllPeerActions(_ transactionBodies: [TransactionBody]) -> [PeerAction] {
-        transactionBodies.flatMap { $0.peerActions }
-    }
-
-    public static func getAllSettleActions(_ transactionBodies: [TransactionBody]) -> [SettleAction] {
-        transactionBodies.flatMap { $0.settleActions }
-    }
 
     public static func getTotalSwapLocked(_ allSwapActions: [SwapAction]) -> (total: UInt64, overflow: Bool) {
         var total: UInt64 = 0
@@ -150,7 +123,21 @@ extension Block: Node {
     }
 
     public func set(properties: [PathSegment : any cashew.Header]) -> Block {
-        return Block(version: version, previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? VolumeImpl<Block>, transactions: properties[TRANSACTIONS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>, difficulty: difficulty, nextDifficulty: nextDifficulty, spec: properties[SPEC_PROPERTY] as! HeaderImpl<ChainSpec>, parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as! LatticeStateHeader, homestead: properties[HOMESTEAD_PROPERTY] as! LatticeStateHeader, frontier: properties[FRONTIER_PROPERTY] as! LatticeStateHeader, childBlocks: properties[CHILD_BLOCKS_PROPERTY] as! HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>, index: index, timestamp: timestamp, nonce: nonce)
+        return Block(
+            version: version,
+            previousBlock: properties[PREVIOUS_BLOCK_PROPERTY] as? VolumeImpl<Block> ?? previousBlock,
+            transactions: properties[TRANSACTIONS_PROPERTY] as? HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>> ?? transactions,
+            difficulty: difficulty,
+            nextDifficulty: nextDifficulty,
+            spec: properties[SPEC_PROPERTY] as? HeaderImpl<ChainSpec> ?? spec,
+            parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as? LatticeStateHeader ?? parentHomestead,
+            homestead: properties[HOMESTEAD_PROPERTY] as? LatticeStateHeader ?? homestead,
+            frontier: properties[FRONTIER_PROPERTY] as? LatticeStateHeader ?? frontier,
+            childBlocks: properties[CHILD_BLOCKS_PROPERTY] as? HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>> ?? childBlocks,
+            index: index,
+            timestamp: timestamp,
+            nonce: nonce
+        )
     }
 }
 

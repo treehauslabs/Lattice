@@ -51,7 +51,15 @@ public struct LatticeState: Node {
     }
 
     public func set(properties: [PathSegment : any cashew.Header]) -> LatticeState {
-        return Self(accountState: properties[ACCOUNT_STATE_PROPERTY] as! AccountStateHeader, generalState: properties[GENERAL_STATE_PROPERTY] as! GeneralStateHeader, swapState: properties[SWAP_STATE_PROPERTY] as! SwapStateHeader, peerState: properties[PEER_STATE_PROPERTY] as! PeerStateHeader, genesisState: properties[GENESIS_STATE_PROPERTY] as! GenesisStateHeader, settleState: properties[SETTLE_STATE_PROPERTY] as! SettleStateHeader, transactionState: properties[TRANSACTION_STATE_PROPERTY] as! TransactionStateHeader)
+        return Self(
+            accountState: properties[ACCOUNT_STATE_PROPERTY] as? AccountStateHeader ?? accountState,
+            generalState: properties[GENERAL_STATE_PROPERTY] as? GeneralStateHeader ?? generalState,
+            swapState: properties[SWAP_STATE_PROPERTY] as? SwapStateHeader ?? swapState,
+            peerState: properties[PEER_STATE_PROPERTY] as? PeerStateHeader ?? peerState,
+            genesisState: properties[GENESIS_STATE_PROPERTY] as? GenesisStateHeader ?? genesisState,
+            settleState: properties[SETTLE_STATE_PROPERTY] as? SettleStateHeader ?? settleState,
+            transactionState: properties[TRANSACTION_STATE_PROPERTY] as? TransactionStateHeader ?? transactionState
+        )
     }
 
     public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allSettleActions: [SettleAction], transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> LatticeState {
