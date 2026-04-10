@@ -72,6 +72,7 @@ public struct Transaction {
         let resolvedBody = try await body.resolve(fetcher: fetcher)
         if !signaturesMatchSigners() { return false }
         guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        if bodyNode.chainPath != [directory] { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }
@@ -80,11 +81,12 @@ public struct Transaction {
         return true
     }
 
-    func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
+    func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, chainPath: [String], fetcher: Fetcher) async throws -> Bool {
         if !signaturesAreValid() { return false }
         let resolvedBody = try await body.resolve(fetcher: fetcher)
         if !signaturesMatchSigners() { return false }
         guard let bodyNode = resolvedBody.node else { throw ValidationErrors.transactionNotResolved }
+        if bodyNode.chainPath != chainPath { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }

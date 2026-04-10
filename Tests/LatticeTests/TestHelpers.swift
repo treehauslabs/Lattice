@@ -26,3 +26,18 @@ struct ThrowingFetcher: Fetcher {
         throw FetcherError.notFound(rawCid)
     }
 }
+
+/// Synchronous storer that collects CAS data in memory, then flushes to a StorableFetcher.
+final class CollectingStorer: Storer, @unchecked Sendable {
+    private var collected: [(String, Data)] = []
+
+    func store(rawCid: String, data: Data) throws {
+        collected.append((rawCid, data))
+    }
+
+    func flush(to fetcher: StorableFetcher) async {
+        for (cid, data) in collected {
+            await fetcher.store(rawCid: cid, data: data)
+        }
+    }
+}

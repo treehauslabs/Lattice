@@ -66,7 +66,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let spend2 = TransactionBody(
             accountActions: [
@@ -74,7 +74,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: charlieAddr, delta: Int64(premine + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 2
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus"]
         )
 
         do {
@@ -107,7 +107,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [sign(spend1Body, alice)],
@@ -120,7 +120,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward + 1 + reward) - Int64(premine + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 2
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus"]
         )
 
         do {
@@ -155,7 +155,7 @@ final class SignatureSecurityTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
         let realSig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
@@ -191,7 +191,7 @@ final class SignatureSecurityTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: realAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [realAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [realAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
         let sig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: imposter.privateKey)!
@@ -219,7 +219,7 @@ final class SignatureSecurityTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [kpAddr], fee: 0, nonce: 0
+            signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let tx = Transaction(signatures: [:], body: HeaderImpl<TransactionBody>(node: body))
 
@@ -250,7 +250,7 @@ final class SignatureSecurityTests: XCTestCase {
                 AccountAction(owner: thiefAddr, delta: Int64(premine + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [thiefAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [thiefAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let tx = sign(body, thief)
 
@@ -283,7 +283,7 @@ final class BalanceOverflowTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + 1))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let block = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [sign(body, kp)],
@@ -349,7 +349,7 @@ final class CrossChainSecurityTests: XCTestCase {
                 SwapAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: 100, timelock: 1000)
             ],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [kpAddr], fee: 0, nonce: 1
+            signers: [kpAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "Child"]
         )
 
         do {
@@ -382,7 +382,7 @@ final class CrossChainSecurityTests: XCTestCase {
                 SwapAction(nonce: 1, sender: kpAddr, recipient: kpAddr, amount: 0, timelock: 1000)
             ],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [kpAddr], fee: 0, nonce: 1
+            signers: [kpAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "Child"]
         )
 
         do {
@@ -427,7 +427,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [AccountAction(owner: minerAddr, delta: Int64(newBalance) - Int64(minerBalance))],
                 actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: i
+                peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: i, chainPath: ["Nexus"]
             )
             let block = try await BlockBuilder.buildBlock(
                 previous: prev, transactions: [sign(body, miner)],
@@ -465,7 +465,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
                 AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [payerAddr], fee: fee, nonce: 1
+            peerActions: [], settleActions: [], signers: [payerAddr], fee: fee, nonce: 1, chainPath: ["Nexus"]
         )
         let block = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [sign(body, payer)],
@@ -719,7 +719,7 @@ final class BlockLimitTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [], actions: [], swapActions: [], swapClaimActions: [],
                 genesisActions: [], peerActions: [], settleActions: [],
-                signers: [cid(kp.publicKey)], fee: 0, nonce: i
+                signers: [cid(kp.publicKey)], fee: 0, nonce: 0, chainPath: ["Nexus"]
             )
             txs.append(sign(body, kp))
         }

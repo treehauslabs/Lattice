@@ -122,10 +122,12 @@ public actor ChainLevel {
                 group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs] in
                     guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else { return }
 
+                    let childChainPath = allAncestorSpecs.map { $0.directory } + [directory]
                     let isValid = await childLevel.validateChildBlock(
                         childBlock: childBlock,
                         parentBlock: parentBlock,
                         ancestorSpecs: allAncestorSpecs,
+                        chainPath: childChainPath,
                         fetcher: fetcher
                     )
                     if !isValid { return }
@@ -157,6 +159,7 @@ public actor ChainLevel {
         childBlock: Block,
         parentBlock: Block,
         ancestorSpecs: [ChainSpec] = [],
+        chainPath: [String] = [],
         fetcher: Fetcher
     ) async -> Bool {
         if parentBlock.timestamp != childBlock.timestamp { return false }
@@ -179,6 +182,10 @@ public actor ChainLevel {
         guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
         guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
         let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
+
+        if !chainPath.isEmpty {
+            for body in bodies where body.chainPath != chainPath { return false }
+        }
 
         if let specNode = childBlock.spec.node {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }

@@ -77,7 +77,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 1
+            signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "Child"]
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis, transactions: [tx(swapBody, alice)],
@@ -105,7 +105,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                     directoryB: "Child"
                 )
             ],
-            signers: [aliceAddr], fee: 0, nonce: 0
+            signers: [aliceAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let nexusBlock1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [tx(settleBody, alice)],
@@ -125,7 +125,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                 SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000, isRefund: false)
             ],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 2
+            signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus", "Child"]
         )
 
         let childBlock2 = try await BlockBuilder.buildBlock(
@@ -172,7 +172,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 1
+            signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "Child"]
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis, transactions: [tx(swapBody, alice)],
@@ -195,7 +195,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                 SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock, isRefund: true)
             ],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 2
+            signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus", "Child"]
         )
         let childBlock2 = try await BlockBuilder.buildBlock(
             previous: childBlock1,
@@ -206,6 +206,7 @@ final class CrossChainRoundtripTests: XCTestCase {
         let valid = try await childBlock2.validate(
             nexusHash: childBlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock2,
+            chainPath: ["Nexus", "Child"],
             fetcher: fetcher
         )
         XCTAssertTrue(valid, "Refund after timelock should succeed (blockIndex 2 > timelock 1)")
@@ -243,7 +244,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             actions: [],
             swapActions: [childSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 1
+            signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "Child"]
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis, transactions: [tx(swapBody, alice)],
@@ -266,7 +267,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                 SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: timelock, isRefund: true)
             ],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 2
+            signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus", "Child"]
         )
         let childBlock2 = try await BlockBuilder.buildBlock(
             previous: childBlock1,
@@ -277,6 +278,7 @@ final class CrossChainRoundtripTests: XCTestCase {
         let valid = try await childBlock2.validate(
             nexusHash: childBlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock2,
+            chainPath: ["Nexus", "Child"],
             fetcher: fetcher
         )
         XCTAssertFalse(valid, "Refund before timelock expires must be rejected (blockIndex 2 <= timelock 9999)")
@@ -321,7 +323,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineA - aliceSwapAmount + rewardA) - Int64(premineA))],
             actions: [], swapActions: [aliceSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 1
+            signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "ChildA"]
         )
         let childABlock1 = try await BlockBuilder.buildBlock(
             previous: childAGenesis, transactions: [tx(aliceSwapBody, alice)],
@@ -333,7 +335,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             accountActions: [AccountAction(owner: bobAddr, delta: Int64(premineB - bobSwapAmount + rewardB) - Int64(premineB))],
             actions: [], swapActions: [bobSwap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [bobAddr], fee: 0, nonce: 1
+            signers: [bobAddr], fee: 0, nonce: 1, chainPath: ["Nexus", "ChildB"]
         )
         let childBBlock1 = try await BlockBuilder.buildBlock(
             previous: childBGenesis, transactions: [tx(bobSwapBody, bob)],
@@ -352,7 +354,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                 swapKeyA: aliceSwapKey, directoryA: "ChildA",
                 swapKeyB: bobSwapKey, directoryB: "ChildB"
             )],
-            signers: [aliceAddr, bobAddr], fee: 0, nonce: 0
+            signers: [aliceAddr, bobAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let settleHeader = HeaderImpl<TransactionBody>(node: settleBody)
         let sigA = CryptoUtils.sign(message: settleHeader.rawCID, privateKeyHex: alice.privateKey)!
@@ -377,7 +379,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: bobAddr, amount: aliceSwapAmount, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [bobAddr], fee: 0, nonce: 0
+            signers: [bobAddr], fee: 0, nonce: 0, chainPath: ["Nexus", "ChildA"]
         )
         let childABlock2 = try await BlockBuilder.buildBlock(
             previous: childABlock1, transactions: [tx(bobClaimOnA, bob)],
@@ -387,6 +389,7 @@ final class CrossChainRoundtripTests: XCTestCase {
         let childAValid = try await childABlock2.validate(
             nexusHash: childABlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock3,
+            chainPath: ["Nexus", "ChildA"],
             fetcher: fetcher
         )
         XCTAssertTrue(childAValid, "Bob claiming Alice's swap on ChildA should be valid")
@@ -396,7 +399,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             actions: [], swapActions: [],
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: bobAddr, recipient: aliceAddr, amount: bobSwapAmount, timelock: 500, isRefund: false)],
             genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 0
+            signers: [aliceAddr], fee: 0, nonce: 0, chainPath: ["Nexus", "ChildB"]
         )
         let childBBlock2 = try await BlockBuilder.buildBlock(
             previous: childBBlock1, transactions: [tx(aliceClaimOnB, alice)],
@@ -406,6 +409,7 @@ final class CrossChainRoundtripTests: XCTestCase {
         let childBValid = try await childBBlock2.validate(
             nexusHash: childBBlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock3,
+            chainPath: ["Nexus", "ChildB"],
             fetcher: fetcher
         )
         XCTAssertTrue(childBValid, "Alice claiming Bob's swap on ChildB should be valid")
@@ -525,7 +529,7 @@ final class SwapAuthorizationTests: XCTestCase {
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premine - swapAmount + reward) - Int64(premine))],
             actions: [], swapActions: [swap],
             swapClaimActions: [], genesisActions: [], peerActions: [], settleActions: [],
-            signers: [aliceAddr], fee: 0, nonce: 1
+            signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let nexusBlock1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [tx(swapBody, alice)],
@@ -539,7 +543,7 @@ final class SwapAuthorizationTests: XCTestCase {
             swapClaimActions: [SwapClaimAction(nonce: 1, sender: aliceAddr, recipient: aliceAddr, amount: swapAmount, timelock: 1000, isRefund: false)],
             genesisActions: [], peerActions: [],
             settleActions: [SettleAction(nonce: 1, senderA: aliceAddr, senderB: aliceAddr, swapKeyA: swapKey, directoryA: "Nexus", swapKeyB: swapKey, directoryB: "Nexus")],
-            signers: [aliceAddr], fee: 0, nonce: 2
+            signers: [aliceAddr], fee: 0, nonce: 2, chainPath: ["Nexus"]
         )
         do {
             let nexusBlock2 = try await BlockBuilder.buildBlock(
@@ -576,7 +580,7 @@ final class NonceReplayTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let transaction = tx(body, kp)
 
@@ -613,7 +617,7 @@ final class NonceReplayTests: XCTestCase {
         let body1 = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(body1, kp)],
@@ -625,7 +629,7 @@ final class NonceReplayTests: XCTestCase {
         let body2 = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
 
         do {
@@ -656,12 +660,12 @@ final class NonceReplayTests: XCTestCase {
         let aliceBody = TransactionBody(
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(reward / 2))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let bobBody = TransactionBody(
             accountActions: [AccountAction(owner: bobAddr, delta: Int64(reward / 2))],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
 
         let block1 = try await BlockBuilder.buildBlock(
@@ -701,7 +705,7 @@ final class ReorgBalanceTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(100 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let mainBlock1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(mainBody, alice)],
@@ -770,7 +774,7 @@ final class MultiSignerTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(500 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(fundBob, alice)],
@@ -788,7 +792,7 @@ final class MultiSignerTests: XCTestCase {
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [],
             signers: [aliceAddr, bobAddr],
-            fee: 0, nonce: 0
+            fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: multiBody)
         let aliceSig = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: alice.privateKey)!
@@ -825,7 +829,7 @@ final class MultiSignerTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(500 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(fundBob, alice)],
@@ -843,7 +847,7 @@ final class MultiSignerTests: XCTestCase {
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
             peerActions: [], settleActions: [],
             signers: [aliceAddr, bobAddr],
-            fee: 0, nonce: 0
+            fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         // Only alice signs
         let onlyAliceTx = tx(body, alice)
@@ -885,7 +889,7 @@ final class LongChainEconomicTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [AccountAction(owner: minerAddr, delta: Int64(newBalance) - Int64(balance))],
                 actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: i
+                peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: i, chainPath: ["Nexus"]
             )
             let block = try await BlockBuilder.buildBlock(
                 previous: prev, transactions: [tx(body, miner)],
@@ -936,7 +940,7 @@ final class LongChainEconomicTests: XCTestCase {
                     ],
                     actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
                     peerActions: [], settleActions: [], signers: [aliceAddr],
-                    fee: 0, nonce: UInt64(i) + 1
+                    fee: 0, nonce: UInt64(i / 2) + 1, chainPath: ["Nexus"]
                 )
                 signer = alice
                 aliceBalance -= amount
@@ -949,7 +953,7 @@ final class LongChainEconomicTests: XCTestCase {
                     ],
                     actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
                     peerActions: [], settleActions: [], signers: [bobAddr],
-                    fee: 0, nonce: UInt64(i / 2)
+                    fee: 0, nonce: UInt64(i / 2), chainPath: ["Nexus"]
                 )
                 signer = bob
                 bobBalance -= amount
@@ -997,7 +1001,7 @@ final class StateGrowthAttackTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [Action(key: "large_key_exceeds_limit", oldValue: nil, newValue: "value")],
             swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let block = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(body, kp)],
@@ -1120,7 +1124,7 @@ final class MultiChainGenesisTests: XCTestCase {
             actions: [], swapActions: [],
             swapClaimActions: [],
             genesisActions: [GenesisAction(directory: "Child", block: childGenesis)], peerActions: [], settleActions: [],
-            signers: [kpAddr], fee: 0, nonce: 0
+            signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [tx(body, kp)],
@@ -1159,7 +1163,7 @@ final class MultiChainGenesisTests: XCTestCase {
                 GenesisAction(directory: "Child1", block: child1Genesis),
                 GenesisAction(directory: "Child2", block: child2Genesis)
             ], peerActions: [], settleActions: [],
-            signers: [kpAddr], fee: 0, nonce: 0
+            signers: [kpAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [tx(body, kp)],
@@ -1200,7 +1204,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: carolAddr, delta: Int64(300 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let block1 = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx(body1, alice)],
@@ -1218,7 +1222,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: aliceAddr, delta: Int64(200))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
         let tx2Body = TransactionBody(
             accountActions: [
@@ -1226,7 +1230,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: aliceAddr, delta: Int64(100 + reward2))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [carolAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [carolAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
 
         let block2 = try await BlockBuilder.buildBlock(
@@ -1258,7 +1262,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + 1 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
 
         do {
@@ -1310,7 +1314,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(100))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1, chainPath: ["Nexus"]
         )
         let tx2Body = TransactionBody(
             accountActions: [
@@ -1318,7 +1322,7 @@ final class DeltaModelTests: XCTestCase {
                 AccountAction(owner: aliceAddr, delta: Int64(100 + reward))
             ],
             actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
+            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0, chainPath: ["Nexus"]
         )
 
         let block = try await BlockBuilder.buildBlock(

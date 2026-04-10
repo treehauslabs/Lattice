@@ -98,7 +98,7 @@ public extension Block {
         return difficulty >= nexusHash
     }
 
-    func validate(nexusHash: UInt256, parentChainBlock: Block, fetcher: Fetcher) async throws -> Bool {
+    func validate(nexusHash: UInt256, parentChainBlock: Block, chainPath: [String] = [], fetcher: Fetcher) async throws -> Bool {
         guard let previousBlockNode = try await previousBlock?.resolve(fetcher: fetcher).node else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
@@ -120,7 +120,7 @@ public extension Block {
         let (homesteadState, parentStateResolved) = try await (homesteadStateFuture, parentStateFuture)
         guard let homesteadStateNode = homesteadState.node else { throw ValidationErrors.homesteadNotResolved }
         guard let parentHomesteadStateNode = parentStateResolved.node else { throw ValidationErrors.homesteadNotResolved }
-        if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, blockIndex: self.index, fetcher: fetcher) }).contains(false) { return false }
+        if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, blockIndex: self.index, chainPath: chainPath, fetcher: fetcher) }).contains(false) { return false }
         let transactionBodiesMaybe = txs.map { $0.body.node }
         if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
         let transactionBodies = transactionBodiesMaybe.map { $0! }

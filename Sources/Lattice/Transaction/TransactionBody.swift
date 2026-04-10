@@ -14,8 +14,47 @@ public struct TransactionBody: Scalar {
     public let signers: [String]
     public let fee: UInt64
     public let nonce: UInt64
+    public let chainPath: [String]
 
-    public init(accountActions: [AccountAction], actions: [Action], swapActions: [SwapAction], swapClaimActions: [SwapClaimAction], genesisActions: [GenesisAction], peerActions: [PeerAction], settleActions: [SettleAction], signers: [String], fee: UInt64, nonce: UInt64) {
+    enum CodingKeys: String, CodingKey {
+        case accountActions, actions, swapActions, swapClaimActions
+        case genesisActions, peerActions, settleActions
+        case signers, fee, nonce, chainPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountActions = try container.decode([AccountAction].self, forKey: .accountActions)
+        actions = try container.decode([Action].self, forKey: .actions)
+        swapActions = try container.decode([SwapAction].self, forKey: .swapActions)
+        swapClaimActions = try container.decode([SwapClaimAction].self, forKey: .swapClaimActions)
+        genesisActions = try container.decode([GenesisAction].self, forKey: .genesisActions)
+        peerActions = try container.decode([PeerAction].self, forKey: .peerActions)
+        settleActions = try container.decode([SettleAction].self, forKey: .settleActions)
+        signers = try container.decode([String].self, forKey: .signers)
+        fee = try container.decode(UInt64.self, forKey: .fee)
+        nonce = try container.decode(UInt64.self, forKey: .nonce)
+        chainPath = try container.decodeIfPresent([String].self, forKey: .chainPath) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(accountActions, forKey: .accountActions)
+        try container.encode(actions, forKey: .actions)
+        try container.encode(swapActions, forKey: .swapActions)
+        try container.encode(swapClaimActions, forKey: .swapClaimActions)
+        try container.encode(genesisActions, forKey: .genesisActions)
+        try container.encode(peerActions, forKey: .peerActions)
+        try container.encode(settleActions, forKey: .settleActions)
+        try container.encode(signers, forKey: .signers)
+        try container.encode(fee, forKey: .fee)
+        try container.encode(nonce, forKey: .nonce)
+        if !chainPath.isEmpty {
+            try container.encode(chainPath, forKey: .chainPath)
+        }
+    }
+
+    public init(accountActions: [AccountAction], actions: [Action], swapActions: [SwapAction], swapClaimActions: [SwapClaimAction], genesisActions: [GenesisAction], peerActions: [PeerAction], settleActions: [SettleAction], signers: [String], fee: UInt64, nonce: UInt64, chainPath: [String] = []) {
         self.accountActions = accountActions
         self.actions = actions
         self.swapActions = swapActions
@@ -26,6 +65,7 @@ public struct TransactionBody: Scalar {
         self.signers = signers
         self.fee = fee
         self.nonce = nonce
+        self.chainPath = chainPath
     }
 
     func swapActionsAreValid() -> Bool {

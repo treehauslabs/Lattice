@@ -1,41 +1,44 @@
 import Foundation
 import Crypto
+import P256K
 
 public struct CryptoUtils {
-    
+
     public static func generateKeyPair() -> (privateKey: String, publicKey: String) {
-        let privateKey = P256.Signing.PrivateKey()
-        let publicKeyData = privateKey.publicKey.rawRepresentation
-        let privateKeyData = privateKey.rawRepresentation
-        
+        // secp256k1 key generation only fails if random bytes produce an invalid
+        // private key (probability ≈ 2^-128), so force-try is safe here.
+        let privateKey = try! P256K.Signing.PrivateKey()
+        let publicKeyData = privateKey.publicKey.dataRepresentation
+        let privateKeyData = privateKey.dataRepresentation
+
         let publicKeyHex = publicKeyData.map { String(format: "%02x", $0) }.joined()
         let privateKeyHex = privateKeyData.map { String(format: "%02x", $0) }.joined()
-        
+
         return (privateKeyHex, publicKeyHex)
     }
-    
+
     public static func sign(message: String, privateKeyHex: String) -> String? {
         guard let privateKeyData = Data(hex: privateKeyHex),
-              let privateKey = try? P256.Signing.PrivateKey(rawRepresentation: privateKeyData) else {
+              let privateKey = try? P256K.Signing.PrivateKey(dataRepresentation: privateKeyData) else {
             return nil
         }
-        
+
         let messageData = Data(message.utf8)
         guard let signature = try? privateKey.signature(for: messageData) else {
             return nil
         }
-        
-        return signature.rawRepresentation.map { String(format: "%02x", $0) }.joined()
+
+        return signature.compactRepresentation.map { String(format: "%02x", $0) }.joined()
     }
-    
+
     public static func verify(message: String, signature: String, publicKeyHex: String) -> Bool {
         guard let publicKeyData = Data(hex: publicKeyHex),
-              let publicKey = try? P256.Signing.PublicKey(rawRepresentation: publicKeyData),
+              let publicKey = try? P256K.Signing.PublicKey(dataRepresentation: publicKeyData, format: .compressed),
               let signatureData = Data(hex: signature),
-              let ecdsaSignature = try? P256.Signing.ECDSASignature(rawRepresentation: signatureData) else {
+              let ecdsaSignature = try? P256K.Signing.ECDSASignature(compactRepresentation: signatureData) else {
             return false
         }
-        
+
         let messageData = Data(message.utf8)
         return publicKey.isValidSignature(ecdsaSignature, for: messageData)
     }

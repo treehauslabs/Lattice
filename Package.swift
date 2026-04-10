@@ -21,6 +21,7 @@ let package = Package(
         .package(url: "https://github.com/swift-libp2p/swift-cid.git", from: "0.0.1"),
         .package(url: "https://github.com/JohnSundell/CollectionConcurrencyKit.git", from: "0.2.0"),
         .package(url: "https://github.com/jectivex/JXKit.git", from: "3.6.0"),
+        .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1.git", exact: "0.23.0"),
     ],
     targets: [
         .target(
@@ -32,6 +33,7 @@ let package = Package(
                 .product(name: "UInt256", package: "UInt256"),
                 .product(name: "CollectionConcurrencyKit", package: "CollectionConcurrencyKit"),
                 .product(name: "JXKit", package: "JXKit"),
+                .product(name: "P256K", package: "swift-secp256k1"),
             ]),
         .executableTarget(
             name: "LatticeDemo",
