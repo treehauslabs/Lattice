@@ -1169,3 +1169,163 @@ final class MultiChainGenesisTests: XCTestCase {
         XCTAssertTrue(valid)
     }
 }
+
+// ============================================================================
+// MARK: - Delta Model Invariants
+// ============================================================================
+
+@MainActor
+final class DeltaModelTests: XCTestCase {
+
+    // Two independent senders credit the same recipient in one block
+    func testMultipleTransactionsSameRecipientInOneBlock() async throws {
+        let fetcher = f()
+        let base = now() - 20_000
+        let spec = s(premine: 10_000)
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let carol = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let carolAddr = id(carol.publicKey)
+        let reward = spec.rewardAtBlock(0)
+
+        let genesis = try await premineGenesis(spec: spec, owner: alice, fetcher: fetcher, time: base)
+
+        // Block 1: alice sends 500 to bob and 300 to carol
+        let body1 = TransactionBody(
+            accountActions: [
+                AccountAction(owner: aliceAddr, delta: -Int64(500 + 300)),
+                AccountAction(owner: bobAddr, delta: Int64(500)),
+                AccountAction(owner: carolAddr, delta: Int64(300 + reward))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let block1 = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx(body1, alice)],
+            timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let valid1 = try await block1.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(valid1)
+
+        // Block 2: bob and carol BOTH send to alice in the same block (two separate txs)
+        let reward2 = spec.rewardAtBlock(1)
+
+        let tx1Body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: bobAddr, delta: -Int64(200)),
+                AccountAction(owner: aliceAddr, delta: Int64(200))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
+        )
+        let tx2Body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: carolAddr, delta: -Int64(100)),
+                AccountAction(owner: aliceAddr, delta: Int64(100 + reward2))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [carolAddr], fee: 0, nonce: 0
+        )
+
+        let block2 = try await BlockBuilder.buildBlock(
+            previous: block1, transactions: [tx(tx1Body, bob), tx(tx2Body, carol)],
+            timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let valid2 = try await block2.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(valid2, "Two senders crediting the same recipient in one block must be valid")
+    }
+
+    // Debit exceeding balance is rejected during state application
+    func testDebitExceedingBalanceRejected() async throws {
+        let fetcher = f()
+        let base = now() - 10_000
+        let spec = s(premine: 1000)
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let premine = spec.premineAmount()
+        let reward = spec.rewardAtBlock(0)
+
+        let genesis = try await premineGenesis(spec: spec, owner: alice, fetcher: fetcher, time: base)
+
+        // Try to debit more than alice's balance
+        let body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: aliceAddr, delta: -Int64(premine + 1)),
+                AccountAction(owner: bobAddr, delta: Int64(premine + 1 + reward))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+        )
+
+        do {
+            let _ = try await BlockBuilder.buildBlock(
+                previous: genesis, transactions: [tx(body, alice)],
+                timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+            )
+            XCTFail("Debit exceeding balance should fail during block construction")
+        } catch {
+            // Expected: insufficientBalance from proveAndUpdateState
+        }
+    }
+
+    func testInt64MinDeltaRejected() {
+        let action = AccountAction(owner: "test", delta: Int64.min)
+        XCTAssertFalse(action.verify(), "Int64.min delta must be rejected")
+    }
+
+    func testZeroDeltaRejected() {
+        let action = AccountAction(owner: "test", delta: 0)
+        XCTAssertFalse(action.verify(), "Zero delta must be rejected")
+    }
+
+    func testValidDeltasAccepted() {
+        XCTAssertTrue(AccountAction(owner: "a", delta: 1).verify())
+        XCTAssertTrue(AccountAction(owner: "a", delta: -1).verify())
+        XCTAssertTrue(AccountAction(owner: "a", delta: Int64.max).verify())
+        XCTAssertTrue(AccountAction(owner: "a", delta: Int64.min + 1).verify())
+    }
+
+    // Net-zero deltas across multiple txs on same owner in one block
+    func testNetZeroDeltasNoStateChange() async throws {
+        let fetcher = f()
+        let base = now() - 10_000
+        let spec = s(premine: 1000)
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+        let reward = spec.rewardAtBlock(0)
+
+        let genesis = try await premineGenesis(spec: spec, owner: alice, fetcher: fetcher, time: base)
+
+        // alice sends 100 to bob, bob sends 100 back to alice
+        // Net: alice unchanged, bob unchanged, only reward moves
+        let tx1Body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: aliceAddr, delta: -100),
+                AccountAction(owner: bobAddr, delta: Int64(100))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let tx2Body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: bobAddr, delta: -100),
+                AccountAction(owner: aliceAddr, delta: Int64(100 + reward))
+            ],
+            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
+            peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0
+        )
+
+        let block = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx(tx1Body, alice), tx(tx2Body, bob)],
+            timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let valid = try await block.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(valid, "Net-zero cross-transfers with reward should produce valid block")
+    }
+}
