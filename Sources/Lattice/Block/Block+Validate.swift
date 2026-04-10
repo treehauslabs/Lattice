@@ -53,14 +53,27 @@ public extension Block {
         return true
     }
 
+    func collectAncestorTimestamps(previousBlock: Block, count: UInt64, fetcher: Fetcher) async -> [Int64] {
+        var timestamps: [Int64] = [previousBlock.timestamp]
+        var current = previousBlock
+        for _ in 1..<count {
+            guard let prev = try? await current.previousBlock?.resolve(fetcher: fetcher).node else { break }
+            timestamps.append(prev.timestamp)
+            current = prev
+        }
+        return timestamps
+    }
+
     func validateNexus(fetcher: Fetcher) async throws -> Bool {
         guard let previousBlockNode = try await previousBlock?.resolve(fetcher: fetcher).node else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
-        if !validateTimestamp(previousBlock: previousBlockNode) { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
-        if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode) { return false }
+        let walkDepth = min(max(specNode.difficultyAdjustmentWindow, 11), 32)
+        let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
+        if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
+        if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
         guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
         guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
@@ -91,11 +104,13 @@ public extension Block {
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateParentState(parent: parentChainBlock) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
-        if !validateTimestamp(previousBlock: previousBlockNode) { return false }
         if parentChainBlock.timestamp != timestamp { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
         guard let parentSpecNode = try await parentChainBlock.spec.resolve(fetcher: fetcher).node else { return false }
-        if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode) { return false }
+        let walkDepth = min(max(specNode.difficultyAdjustmentWindow, 11), 32)
+        let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
+        if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
+        if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         guard let transactionsNode = try await transactions.resolveRecursive(fetcher: fetcher).node else { return false }
         let txHeaders = try transactionsNode.allKeysAndValues().values
         if txHeaders.contains(where: { $0.node == nil }) { throw ValidationErrors.transactionNotResolved }
@@ -198,8 +213,14 @@ public extension Block {
         return parent.homestead.rawCID == parentHomestead.rawCID
     }
 
-    func validateNextDifficulty(spec: ChainSpec, previousBlock: Block) -> Bool {
-        let expected = spec.calculateMinimumDifficulty(previousDifficulty: difficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
+    func validateNextDifficulty(spec: ChainSpec, previousBlock: Block, ancestorTimestamps: [Int64] = []) -> Bool {
+        let expected: UInt256
+        if ancestorTimestamps.count >= 2 {
+            let windowTimestamps = [timestamp] + Array(ancestorTimestamps.prefix(Int(spec.difficultyAdjustmentWindow)))
+            expected = spec.calculateWindowedDifficulty(previousDifficulty: difficulty, ancestorTimestamps: windowTimestamps)
+        } else {
+            expected = spec.calculateMinimumDifficulty(previousDifficulty: difficulty, blockTimestamp: timestamp, previousTimestamp: previousBlock.timestamp)
+        }
         let maxDifficultyChange = UInt256(ChainSpec.maxDifficultyChange)
         let lowerBound = expected / maxDifficultyChange
         let upperBound = expected <= UInt256.max / maxDifficultyChange ? expected * maxDifficultyChange : UInt256.max
@@ -214,12 +235,18 @@ public extension Block {
         return previousBlock.index + 1 == index
     }
 
-    func validateTimestamp(previousBlock: Block) -> Bool {
+    func validateTimestamp(previousBlock: Block, ancestorTimestamps: [Int64] = []) -> Bool {
         if previousBlock.timestamp >= timestamp { return false }
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         if timestamp > now { return false }
         let maxDrift: Int64 = 2 * 60 * 60 * 1000
         if now - timestamp > maxDrift { return false }
+        // Median-time-past: new blocks must have timestamp > median of recent ancestors
+        if ancestorTimestamps.count >= 3 {
+            let sorted = ancestorTimestamps.sorted()
+            let median = sorted[sorted.count / 2]
+            if timestamp <= median { return false }
+        }
         return true
     }
 
