@@ -172,6 +172,22 @@ public extension ChainSpec {
         return calculatePairDifficulty(previousDifficulty: previousDifficulty, actualTime: averageTime)
     }
 
+    /// Whether block at `index` is an epoch boundary where difficulty adjusts.
+    /// Adjustment happens every `difficultyAdjustmentWindow` blocks.
+    func isEpochBoundary(blockIndex: UInt64) -> Bool {
+        guard difficultyAdjustmentWindow > 0 else { return true }
+        return blockIndex % difficultyAdjustmentWindow == 0
+    }
+
+    /// Calculate next difficulty using epoch-based adjustment.
+    /// Only adjusts at epoch boundaries; carries forward otherwise.
+    func calculateEpochDifficulty(blockIndex: UInt64, previousDifficulty: UInt256, ancestorTimestamps: [Int64]) -> UInt256 {
+        guard isEpochBoundary(blockIndex: blockIndex) else {
+            return previousDifficulty
+        }
+        return calculateWindowedDifficulty(previousDifficulty: previousDifficulty, ancestorTimestamps: ancestorTimestamps)
+    }
+
     func validateDifficulty(_ newDifficulty: UInt256, minimumDifficulty: UInt256) -> Bool {
         return newDifficulty <= minimumDifficulty
     }

@@ -235,6 +235,10 @@ public extension Block {
     }
 
     func validateNextDifficulty(spec: ChainSpec, previousBlock: Block, ancestorTimestamps: [Int64] = []) -> Bool {
+        // Epoch-based: only adjust at window boundaries
+        if !spec.isEpochBoundary(blockIndex: index) {
+            return nextDifficulty == difficulty
+        }
         let expected: UInt256
         if ancestorTimestamps.count >= 2 {
             let windowTimestamps = [timestamp] + Array(ancestorTimestamps.prefix(Int(spec.difficultyAdjustmentWindow)))
