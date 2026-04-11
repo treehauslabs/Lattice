@@ -15,11 +15,13 @@ public struct TransactionBody: Scalar {
     public let fee: UInt64
     public let nonce: UInt64
     public let chainPath: [String]
+    public let matchedOrders: [MatchedOrder]
+    public let claimedOrders: [MatchedOrder]
 
     enum CodingKeys: String, CodingKey {
         case accountActions, actions, swapActions, swapClaimActions
         case genesisActions, peerActions, settleActions
-        case signers, fee, nonce, chainPath
+        case signers, fee, nonce, chainPath, matchedOrders, claimedOrders
     }
 
     public init(from decoder: Decoder) throws {
@@ -35,6 +37,8 @@ public struct TransactionBody: Scalar {
         fee = try container.decode(UInt64.self, forKey: .fee)
         nonce = try container.decode(UInt64.self, forKey: .nonce)
         chainPath = try container.decodeIfPresent([String].self, forKey: .chainPath) ?? []
+        matchedOrders = try container.decodeIfPresent([MatchedOrder].self, forKey: .matchedOrders) ?? []
+        claimedOrders = try container.decodeIfPresent([MatchedOrder].self, forKey: .claimedOrders) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -52,9 +56,15 @@ public struct TransactionBody: Scalar {
         if !chainPath.isEmpty {
             try container.encode(chainPath, forKey: .chainPath)
         }
+        if !matchedOrders.isEmpty {
+            try container.encode(matchedOrders, forKey: .matchedOrders)
+        }
+        if !claimedOrders.isEmpty {
+            try container.encode(claimedOrders, forKey: .claimedOrders)
+        }
     }
 
-    public init(accountActions: [AccountAction], actions: [Action], swapActions: [SwapAction], swapClaimActions: [SwapClaimAction], genesisActions: [GenesisAction], peerActions: [PeerAction], settleActions: [SettleAction], signers: [String], fee: UInt64, nonce: UInt64, chainPath: [String] = []) {
+    public init(accountActions: [AccountAction], actions: [Action], swapActions: [SwapAction], swapClaimActions: [SwapClaimAction], genesisActions: [GenesisAction], peerActions: [PeerAction], settleActions: [SettleAction], signers: [String], fee: UInt64, nonce: UInt64, chainPath: [String] = [], matchedOrders: [MatchedOrder] = [], claimedOrders: [MatchedOrder] = []) {
         self.accountActions = accountActions
         self.actions = actions
         self.swapActions = swapActions
@@ -66,6 +76,110 @@ public struct TransactionBody: Scalar {
         self.fee = fee
         self.nonce = nonce
         self.chainPath = chainPath
+        self.matchedOrders = matchedOrders
+        self.claimedOrders = claimedOrders
+    }
+
+    func matchedOrdersAreValid() -> Bool {
+        var totalFills: [UInt128: UInt64] = [:]
+        // Uniform clearing price: all matches in the same directed pair must have the same rate
+        // Rate is fillAmountB/fillAmountA — compare via cross-multiplication
+        var pairRates: [String: (UInt64, UInt64)] = [:] // pair -> (fillA, fillB) of first match
+        for match in matchedOrders {
+            if !match.ordersAreCompatible() { return false }
+            let pairKey = "\(match.orderA.order.sourceChain)>\(match.orderA.order.destChain)"
+            if let (refA, refB) = pairRates[pairKey] {
+                // fillB/fillA must equal refB/refA => fillB * refA == refB * fillA
+                let lhs = UInt128(match.fillAmountB) &* UInt128(refA)
+                let rhs = UInt128(refB) &* UInt128(match.fillAmountA)
+                if lhs != rhs { return false }
+            } else {
+                pairRates[pairKey] = (match.fillAmountA, match.fillAmountB)
+            }
+            let (newA, ovA) = (totalFills[match.orderA.order.nonce] ?? 0).addingReportingOverflow(match.fillAmountA)
+            if ovA || newA > match.orderA.order.sourceAmount { return false }
+            totalFills[match.orderA.order.nonce] = newA
+            let (newB, ovB) = (totalFills[match.orderB.order.nonce] ?? 0).addingReportingOverflow(match.fillAmountB)
+            if ovB || newB > match.orderB.order.sourceAmount { return false }
+            totalFills[match.orderB.order.nonce] = newB
+        }
+        var claimFills: [UInt128: UInt64] = [:]
+        for match in claimedOrders {
+            if !match.ordersAreCompatible() { return false }
+            let (newA, ovA) = (claimFills[match.orderA.order.nonce] ?? 0).addingReportingOverflow(match.fillAmountA)
+            if ovA || newA > match.orderA.order.sourceAmount { return false }
+            claimFills[match.orderA.order.nonce] = newA
+            let (newB, ovB) = (claimFills[match.orderB.order.nonce] ?? 0).addingReportingOverflow(match.fillAmountB)
+            if ovB || newB > match.orderB.order.sourceAmount { return false }
+            claimFills[match.orderB.order.nonce] = newB
+        }
+        return true
+    }
+
+    // MARK: - Order-Derived Actions
+
+    func derivedSwapActions(forChain directory: String) -> [SwapAction] {
+        var result: [SwapAction] = []
+        for match in matchedOrders {
+            if match.orderA.order.sourceChain == directory {
+                result.append(match.swapActionA())
+            }
+            if match.orderB.order.sourceChain == directory {
+                result.append(match.swapActionB())
+            }
+        }
+        return result
+    }
+
+    func derivedSettleActions() -> [SettleAction] {
+        matchedOrders.map { $0.settleAction() }
+    }
+
+    func derivedSwapClaimActions(forChain directory: String) -> [SwapClaimAction] {
+        var result: [SwapClaimAction] = []
+        for match in claimedOrders {
+            if match.orderA.order.sourceChain == directory {
+                result.append(match.claimForB())
+            }
+            if match.orderB.order.sourceChain == directory {
+                result.append(match.claimForA())
+            }
+        }
+        return result
+    }
+
+    func derivedAccountActions(forChain directory: String) -> [AccountAction] {
+        var result: [AccountAction] = []
+        for match in matchedOrders {
+            if match.orderA.order.sourceChain == directory {
+                result.append(AccountAction(owner: match.orderA.order.maker, delta: -Int64(match.fillAmountA + match.feeA)))
+            }
+            if match.orderB.order.sourceChain == directory {
+                result.append(AccountAction(owner: match.orderB.order.maker, delta: -Int64(match.fillAmountB + match.feeB)))
+            }
+        }
+        for match in claimedOrders {
+            if match.orderA.order.sourceChain == directory {
+                result.append(AccountAction(owner: match.orderB.order.maker, delta: Int64(match.fillAmountA)))
+            }
+            if match.orderB.order.sourceChain == directory {
+                result.append(AccountAction(owner: match.orderA.order.maker, delta: Int64(match.fillAmountB)))
+            }
+        }
+        return result
+    }
+
+    func derivedOrderFees(forChain directory: String) -> UInt64 {
+        var total: UInt64 = 0
+        for match in matchedOrders {
+            if match.orderA.order.sourceChain == directory { total += match.feeA / 2 }
+            if match.orderB.order.sourceChain == directory { total += match.feeB / 2 }
+        }
+        for match in claimedOrders {
+            if match.orderA.order.sourceChain == directory { total += match.feeA - match.feeA / 2 }
+            if match.orderB.order.sourceChain == directory { total += match.feeB - match.feeB / 2 }
+        }
+        return total
     }
 
     func swapActionsAreValid() -> Bool {
@@ -106,15 +220,16 @@ public struct TransactionBody: Scalar {
     }
 
     func validateSwapClaims(directory: String, settleState: SettleStateHeader, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
-        if swapClaimActions.isEmpty { return true }
-        for swapClaimAction in swapClaimActions {
-            if swapClaimAction.isRefund {
-                if blockIndex <= swapClaimAction.timelock { return false }
+        let allClaims = swapClaimActions + derivedSwapClaimActions(forChain: directory)
+        if allClaims.isEmpty { return true }
+        for claim in allClaims {
+            if claim.isRefund {
+                if blockIndex <= claim.timelock { return false }
             }
         }
-        let claims = swapClaimActions.filter { !$0.isRefund }
-        if !claims.isEmpty {
-            let _ = try await settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: claims, fetcher: fetcher)
+        let nonRefundClaims = allClaims.filter { !$0.isRefund }
+        if !nonRefundClaims.isEmpty {
+            let _ = try await settleState.proveExistenceOfSettlement(directory: directory, swapClaimActions: nonRefundClaims, fetcher: fetcher)
         }
         return true
     }

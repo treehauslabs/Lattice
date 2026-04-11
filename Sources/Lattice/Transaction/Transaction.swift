@@ -37,11 +37,20 @@ public struct Transaction {
     }
 
     func signaturesAreValid() -> Bool {
-        if signatures.isEmpty { return false }
+        guard let bodyNode = body.node else { return false }
+        let hasSignatures = !signatures.isEmpty
+        let hasOrders = !bodyNode.matchedOrders.isEmpty || !bodyNode.claimedOrders.isEmpty
+        if !hasSignatures && !hasOrders { return false }
         for (publicKeyHex, signature) in signatures {
             if !CryptoUtils.verify(message: body.rawCID, signature: signature, publicKeyHex: publicKeyHex) {
                 return false
             }
+        }
+        for match in bodyNode.matchedOrders {
+            if !match.isValid() { return false }
+        }
+        for match in bodyNode.claimedOrders {
+            if !match.isValid() { return false }
         }
         return true
     }
@@ -67,6 +76,8 @@ public struct Transaction {
         if !bodyNode.swapActions.isEmpty { return false }
         if !bodyNode.swapClaimActions.isEmpty { return false }
         if !bodyNode.settleActions.isEmpty { return false }
+        if !bodyNode.matchedOrders.isEmpty { return false }
+        if !bodyNode.claimedOrders.isEmpty { return false }
         return true
     }
 
@@ -77,6 +88,7 @@ public struct Transaction {
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }
         if !bodyNode.swapClaimActionsAreValid() { return false }
+        if !bodyNode.matchedOrdersAreValid() { return false }
         if try await !bodyNode.validateSwapClaims(directory: directory, settleState: homestead.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
         return true
     }
@@ -88,6 +100,7 @@ public struct Transaction {
         if !bodyNode.swapActionsAreValid() { return false }
         if !bodyNode.settleActionsAreValid() { return false }
         if !bodyNode.swapClaimActionsAreValid() { return false }
+        if !bodyNode.matchedOrdersAreValid() { return false }
         if try await !bodyNode.validateSwapClaims(directory: directory, settleState: parentState.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
         return true
     }

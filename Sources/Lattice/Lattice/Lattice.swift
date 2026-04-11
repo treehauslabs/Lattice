@@ -204,7 +204,7 @@ public actor ChainLevel {
 
         // Verify frontier state root: re-derive from homestead + transactions
         guard let frontierValid = try? await childBlock.validateFrontierState(
-            transactionBodies: bodies, fetcher: fetcher
+            transactionBodies: bodies, directory: chainPath.last ?? "", fetcher: fetcher
         ) else { return false }
         if !frontierValid { return false }
 

@@ -29,6 +29,7 @@ public struct BlockBuilder {
         let frontier = try await computeFrontier(
             homestead: homestead,
             transactionBodies: transactionBodies,
+            directory: spec.directory,
             fetcher: fetcher
         )
 
@@ -161,6 +162,7 @@ public struct BlockBuilder {
     static func computeFrontier(
         homestead: LatticeStateHeader,
         transactionBodies: [TransactionBody],
+        directory: String = "",
         fetcher: Fetcher
     ) async throws -> LatticeStateHeader {
         if transactionBodies.isEmpty {
@@ -175,6 +177,7 @@ public struct BlockBuilder {
             return try await computeFrontierFromState(
                 state: resolvedNode,
                 transactionBodies: transactionBodies,
+                directory: directory,
                 fetcher: fetcher
             )
         }
@@ -182,6 +185,7 @@ public struct BlockBuilder {
         return try await computeFrontierFromState(
             state: homesteadNode,
             transactionBodies: transactionBodies,
+            directory: directory,
             fetcher: fetcher
         )
     }
@@ -189,15 +193,16 @@ public struct BlockBuilder {
     static func computeFrontierFromState(
         state: LatticeState,
         transactionBodies: [TransactionBody],
+        directory: String = "",
         fetcher: Fetcher
     ) async throws -> LatticeStateHeader {
-        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions } + transactionBodies.flatMap { $0.derivedAccountActions(forChain: directory) }
         let allActions = transactionBodies.flatMap { $0.actions }
-        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
-        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions }
+        let allSwapActions = transactionBodies.flatMap { $0.swapActions } + transactionBodies.flatMap { $0.derivedSwapActions(forChain: directory) }
+        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions } + transactionBodies.flatMap { $0.derivedSwapClaimActions(forChain: directory) }
         let allGenesisActions = transactionBodies.flatMap { $0.genesisActions }
         let allPeerActions = transactionBodies.flatMap { $0.peerActions }
-        let allSettleActions = transactionBodies.flatMap { $0.settleActions }
+        let allSettleActions = transactionBodies.flatMap { $0.settleActions } + transactionBodies.flatMap { $0.derivedSettleActions() }
 
         let updatedState = try await state.proveAndUpdateState(
             allAccountActions: allAccountActions,
