@@ -83,7 +83,7 @@ public extension Block {
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
-        let walkDepth = min(max(specNode.difficultyAdjustmentWindow, 11), 32)
+        let walkDepth = max(specNode.difficultyAdjustmentWindow, 11)
         let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
         if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
@@ -120,7 +120,7 @@ public extension Block {
         if parentChainBlock.timestamp != timestamp { return false }
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
         guard let parentSpecNode = try await parentChainBlock.spec.resolve(fetcher: fetcher).node else { return false }
-        let walkDepth = min(max(specNode.difficultyAdjustmentWindow, 11), 32)
+        let walkDepth = max(specNode.difficultyAdjustmentWindow, 11)
         let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
         if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
