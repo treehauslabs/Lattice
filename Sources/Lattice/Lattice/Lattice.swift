@@ -183,9 +183,7 @@ public actor ChainLevel {
         guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
         let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
 
-        if !chainPath.isEmpty {
-            for body in bodies where body.chainPath != chainPath { return false }
-        }
+        // chainPath validation removed — no longer part of TransactionBody
 
         if let specNode = childBlock.spec.node {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }
@@ -204,7 +202,7 @@ public actor ChainLevel {
 
         // Verify frontier state root: re-derive from homestead + transactions
         guard let frontierValid = try? await childBlock.validateFrontierState(
-            transactionBodies: bodies, directory: chainPath.last ?? "", fetcher: fetcher
+            transactionBodies: bodies, fetcher: fetcher
         ) else { return false }
         if !frontierValid { return false }
 

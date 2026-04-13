@@ -3,32 +3,32 @@ import Foundation
 
 let ACCOUNT_STATE_PROPERTY = "accountState"
 let GENERAL_STATE_PROPERTY = "generalState"
-let SWAP_STATE_PROPERTY = "swapState"
+let DEPOSIT_STATE_PROPERTY = "depositState"
 let PEER_STATE_PROPERTY = "peerState"
 let GENESIS_STATE_PROPERTY = "genesisState"
-let SETTLE_STATE_PROPERTY = "settleState"
+let RECEIPT_STATE_PROPERTY = "receiptState"
 let TRANSACTION_STATE_PROPERTY = "transactionState"
 
 let LATTICE_STATE_PROPERTIES: Set<String> = Set([
     ACCOUNT_STATE_PROPERTY,
     GENERAL_STATE_PROPERTY,
-    SWAP_STATE_PROPERTY,
+    DEPOSIT_STATE_PROPERTY,
     PEER_STATE_PROPERTY,
     GENESIS_STATE_PROPERTY,
-    SETTLE_STATE_PROPERTY,
+    RECEIPT_STATE_PROPERTY,
     TRANSACTION_STATE_PROPERTY
 ])
 
 public struct LatticeState: Node {
     public let accountState: AccountStateHeader
     public let generalState: GeneralStateHeader
-    public let swapState: SwapStateHeader
+    public let depositState: DepositStateHeader
     public let peerState: PeerStateHeader
     public let genesisState: GenesisStateHeader
-    public let settleState: SettleStateHeader
+    public let receiptState: ReceiptStateHeader
     public let transactionState: TransactionStateHeader
 
-    static let empty = Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), swapState: SwapStateHeader(node: SwapState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), settleState: SettleStateHeader(node: SettleState()), transactionState: TransactionStateHeader(node: TransactionState()))
+    static let empty = Self(accountState: AccountStateHeader(node: AccountState()), generalState: GeneralStateHeader(node: GeneralState()), depositState: DepositStateHeader(node: DepositState()), peerState: PeerStateHeader(node: PeerState()), genesisState: GenesisStateHeader(node: GenesisState()), receiptState: ReceiptStateHeader(node: ReceiptState()), transactionState: TransactionStateHeader(node: TransactionState()))
     static let emptyHeader = LatticeStateHeader(node: empty)
 
     static func emptyState() -> Self { empty }
@@ -37,10 +37,10 @@ public struct LatticeState: Node {
         switch property {
             case ACCOUNT_STATE_PROPERTY: return accountState
             case GENERAL_STATE_PROPERTY: return generalState
-            case SWAP_STATE_PROPERTY: return swapState
+            case DEPOSIT_STATE_PROPERTY: return depositState
             case PEER_STATE_PROPERTY: return peerState
             case GENESIS_STATE_PROPERTY: return genesisState
-            case SETTLE_STATE_PROPERTY: return settleState
+            case RECEIPT_STATE_PROPERTY: return receiptState
             case TRANSACTION_STATE_PROPERTY: return transactionState
             default: return nil
         }
@@ -54,24 +54,25 @@ public struct LatticeState: Node {
         return Self(
             accountState: properties[ACCOUNT_STATE_PROPERTY] as? AccountStateHeader ?? accountState,
             generalState: properties[GENERAL_STATE_PROPERTY] as? GeneralStateHeader ?? generalState,
-            swapState: properties[SWAP_STATE_PROPERTY] as? SwapStateHeader ?? swapState,
+            depositState: properties[DEPOSIT_STATE_PROPERTY] as? DepositStateHeader ?? depositState,
             peerState: properties[PEER_STATE_PROPERTY] as? PeerStateHeader ?? peerState,
             genesisState: properties[GENESIS_STATE_PROPERTY] as? GenesisStateHeader ?? genesisState,
-            settleState: properties[SETTLE_STATE_PROPERTY] as? SettleStateHeader ?? settleState,
+            receiptState: properties[RECEIPT_STATE_PROPERTY] as? ReceiptStateHeader ?? receiptState,
             transactionState: properties[TRANSACTION_STATE_PROPERTY] as? TransactionStateHeader ?? transactionState
         )
     }
 
-    public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allSettleActions: [SettleAction], transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> LatticeState {
+    public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> LatticeState {
         async let newAccountState = accountState.proveAndUpdateState(allAccountActions: allAccountActions, fetcher: fetcher)
         async let newGeneralState = generalState.proveAndUpdateState(allActions: allActions, fetcher: fetcher)
-        async let newSwapState = swapState.proveAndUpdateState(allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, fetcher: fetcher)
         async let newGenesisState = genesisState.proveAndUpdateState(allGenesisActions: allGenesisActions, fetcher: fetcher)
         async let newPeerState = peerState.proveAndUpdateState(allPeerActions: allPeerActions, fetcher: fetcher)
-        async let newSettleState = settleState.proveAndUpdateState(allSettleActions: allSettleActions, fetcher: fetcher)
+        async let newReceiptState = receiptState.proveAndUpdateState(allReceiptActions: allReceiptActions, fetcher: fetcher)
         async let newTransactionState = transactionState.proveAndUpdateState(allTransactions: transactionBodies, fetcher: fetcher)
-        let (finalAccountState, finalGeneralState, finalSwapState, finalGenesisState, finalPeerState, finalSettleState, finalTransactionState) = await (try newAccountState, try newGeneralState, try newSwapState, try newGenesisState, try newPeerState, try newSettleState, try newTransactionState)
-        return Self(accountState: finalAccountState, generalState: finalGeneralState, swapState: finalSwapState, peerState: finalPeerState, genesisState: finalGenesisState, settleState: finalSettleState, transactionState: finalTransactionState)
+        let afterWithdrawals = try await depositState.proveAndDeleteForWithdrawals(allWithdrawalActions: allWithdrawalActions, fetcher: fetcher)
+        async let newDepositState = afterWithdrawals.proveAndUpdateState(allDepositActions: allDepositActions, fetcher: fetcher)
+        let (finalAccountState, finalGeneralState, finalDepositState, finalGenesisState, finalPeerState, finalReceiptState, finalTransactionState) = await (try newAccountState, try newGeneralState, try newDepositState, try newGenesisState, try newPeerState, try newReceiptState, try newTransactionState)
+        return Self(accountState: finalAccountState, generalState: finalGeneralState, depositState: finalDepositState, peerState: finalPeerState, genesisState: finalGenesisState, receiptState: finalReceiptState, transactionState: finalTransactionState)
     }
 }
 

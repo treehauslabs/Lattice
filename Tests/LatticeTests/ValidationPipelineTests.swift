@@ -248,11 +248,11 @@ final class SignatureVerificationTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [],
             actions: [],
-            swapActions: [],
-            swapClaimActions: [],
+            depositActions: [],
             genesisActions: [],
             peerActions: [],
-            settleActions: [],
+            receiptActions: [],
+            withdrawalActions: [],
             signers: [publicKeyCID],
             fee: 0,
             nonce: 1
@@ -270,11 +270,11 @@ final class SignatureVerificationTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [],
             actions: [],
-            swapActions: [],
-            swapClaimActions: [],
+            depositActions: [],
             genesisActions: [],
             peerActions: [],
-            settleActions: [],
+            receiptActions: [],
+            withdrawalActions: [],
             signers: [wrongSignerCID],
             fee: 0,
             nonce: 1
@@ -292,14 +292,14 @@ final class TransactionNonceScopingTests: XCTestCase {
 
     func testSameNonceDifferentSignersProduceDifferentKeys() {
         let body1 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["alice"], fee: 0, nonce: 42
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
         let body2 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["bob"], fee: 0, nonce: 42
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["bob"], fee: 0, nonce: 42
         )
 
         let key1 = TransactionStateHeader.transactionKey(body1)
@@ -309,14 +309,14 @@ final class TransactionNonceScopingTests: XCTestCase {
 
     func testSameSignerSameNonceProducesSameKey() {
         let body1 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["alice"], fee: 0, nonce: 42
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
         let body2 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["alice"], fee: 0, nonce: 42
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
 
         let key1 = TransactionStateHeader.transactionKey(body1)
@@ -326,14 +326,14 @@ final class TransactionNonceScopingTests: XCTestCase {
 
     func testMultipleSignersOrderIndependent() {
         let body1 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["alice", "bob"], fee: 0, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["alice", "bob"], fee: 0, nonce: 1
         )
         let body2 = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: ["bob", "alice"], fee: 0, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: ["bob", "alice"], fee: 0, nonce: 1
         )
 
         let key1 = TransactionStateHeader.transactionKey(body1)
@@ -379,39 +379,38 @@ final class BalanceValidationTests: XCTestCase {
 final class KeyParsingSafetyTests: XCTestCase {
 
     func testSwapKeyRoundTrip() {
-        let original = SwapKey(swapAction: SwapAction(nonce: 42, sender: "sender1", recipient: "abc123", amount: 1000, timelock: 1000))
+        let original = DepositKey(depositAction: DepositAction(nonce: 42, demander: "demander1", amountDemanded: 1000, amountDeposited: 1000))
         let serialized = original.description
-        let parsed = SwapKey(serialized)
+        let parsed = DepositKey(serialized)
         XCTAssertNotNil(parsed)
         XCTAssertEqual(parsed?.nonce, 42)
-        XCTAssertEqual(parsed?.sender, "sender1")
-        XCTAssertEqual(parsed?.recipient, "abc123")
-        XCTAssertEqual(parsed?.amount, 1000)
-        XCTAssertEqual(parsed?.timelock, 1000)
+        XCTAssertEqual(parsed?.demander, "demander1")
+        XCTAssertEqual(parsed?.amountDemanded, 1000)
     }
 
     func testSwapKeyMalformedReturnsNil() {
-        XCTAssertNil(SwapKey(""))
-        XCTAssertNil(SwapKey("onlyone"))
-        XCTAssertNil(SwapKey("two/parts"))
-        XCTAssertNil(SwapKey("sender/recipient/notanumber/1000/42"))
+        XCTAssertNil(DepositKey(""))
+        XCTAssertNil(DepositKey("onlyone"))
+        XCTAssertNil(DepositKey("two/parts"))
     }
 
     func testSettleKeyRoundTrip() {
-        let swapAction = SwapAction(nonce: 99, sender: "s1", recipient: "d1", amount: 500, timelock: 1000)
-        let original = SettleKey(directory: "chain1", swapAction: swapAction)
+        let receiptAction = ReceiptAction(withdrawer: "w1", nonce: 99, demander: "d1", amountDemanded: 500, directory: "chain1")
+        let original = ReceiptKey(receiptAction: receiptAction)
         let serialized = original.description
-        let parsed = SettleKey(serialized)
+        let parsed = ReceiptKey(serialized)
         XCTAssertNotNil(parsed)
         XCTAssertEqual(parsed?.directory, "chain1")
-        XCTAssertEqual(parsed?.swapKey, SwapKey(swapAction: swapAction).description)
+        XCTAssertEqual(parsed?.demander, "d1")
+        XCTAssertEqual(parsed?.amountDemanded, 500)
+        XCTAssertEqual(parsed?.nonce, 99)
     }
 
     func testSettleKeyMalformedReturnsNil() {
-        XCTAssertNil(SettleKey(""))
-        XCTAssertNil(SettleKey("nodirectory"))
-        XCTAssertNil(SettleKey("dir:bad"))
-        XCTAssertNil(SettleKey("dir:a/b"))
+        XCTAssertNil(ReceiptKey(""))
+        XCTAssertNil(ReceiptKey("nodirectory"))
+        XCTAssertNil(ReceiptKey("dir/demander"))
+        XCTAssertNil(ReceiptKey("dir/demander/notanumber"))
     }
 }
 
@@ -526,9 +525,9 @@ final class JavaScriptFilterTests: XCTestCase {
 
     func testTransactionFilterAccepts() {
         let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 100, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { return true; }"
         XCTAssertTrue(body.verifyFilter(filter))
@@ -536,9 +535,9 @@ final class JavaScriptFilterTests: XCTestCase {
 
     func testTransactionFilterRejects() {
         let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 100, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { return false; }"
         XCTAssertFalse(body.verifyFilter(filter))
@@ -546,14 +545,14 @@ final class JavaScriptFilterTests: XCTestCase {
 
     func testTransactionFilterCanInspectFee() {
         let lowFee = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 5, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 5, nonce: 1
         )
         let highFee = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 100, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 50; }"
         XCTAssertFalse(lowFee.verifyFilter(filter))
@@ -582,9 +581,9 @@ final class JavaScriptFilterTests: XCTestCase {
 
     func testInvalidFilterReturnsFalse() {
         let body = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 0, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 0, nonce: 1
         )
         XCTAssertFalse(body.verifyFilter("this is not valid javascript that defines transactionFilter"))
     }
@@ -600,14 +599,14 @@ final class JavaScriptFilterTests: XCTestCase {
             transactionFilters: ["function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 10; }"]
         )
         let lowFeeBody = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 5, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 5, nonce: 1
         )
         let highFeeBody = TransactionBody(
-            accountActions: [], actions: [], swapActions: [],
-            swapClaimActions: [], genesisActions: [], peerActions: [],
-            settleActions: [], signers: [], fee: 50, nonce: 1
+            accountActions: [], actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [], signers: [], fee: 50, nonce: 1
         )
         XCTAssertFalse(lowFeeBody.verifyFilters(spec: spec))
         XCTAssertTrue(highFeeBody.verifyFilters(spec: spec))

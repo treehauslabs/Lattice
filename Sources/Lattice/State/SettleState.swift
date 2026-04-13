@@ -1,69 +1,69 @@
 import cashew
 
-public struct SettleKey: LosslessStringConvertible {
+public struct ReceiptKey: LosslessStringConvertible {
     public let directory: String
-    public let swapKey: String
+    public let nonce: UInt128
+    public let demander: String
+    public let amountDemanded: UInt64
 
-    public init(directory: String, swapKey: String) {
-        self.directory = directory
-        self.swapKey = swapKey
+    public init(receiptAction: ReceiptAction) {
+        directory = receiptAction.directory
+        nonce = receiptAction.nonce
+        demander = receiptAction.demander
+        amountDemanded = receiptAction.amountDemanded
     }
 
-    public init(directory: String, swapAction: SwapAction) {
+    public init(withdrawalAction: WithdrawalAction, directory: String) {
         self.directory = directory
-        self.swapKey = SwapKey(swapAction: swapAction).description
-    }
-
-    public init(directory: String, swapClaimAction: SwapClaimAction) {
-        self.directory = directory
-        self.swapKey = SwapKey(swapClaimAction: swapClaimAction).description
+        nonce = withdrawalAction.nonce
+        demander = withdrawalAction.demander
+        amountDemanded = withdrawalAction.amountDemanded
     }
 
     public init?(_ description: String) {
-        guard let firstSlash = description.firstIndex(of: ":") else { return nil }
-        directory = String(description[description.startIndex..<firstSlash])
-        swapKey = String(description[description.index(after: firstSlash)...])
-        guard SwapKey(swapKey) != nil else { return nil }
+        let split = description.split(separator: "/", maxSplits: 4, omittingEmptySubsequences: true)
+        guard split.count >= 4 else { return nil }
+        let directory = String(split[0])
+        let demander = String(split[1])
+        guard let amountDemanded = UInt64(String(split[2])) else { return nil }
+        guard let nonce = UInt128(String(split[3])) else { return nil }
+        self.directory = directory
+        self.nonce = nonce
+        self.demander = demander
+        self.amountDemanded = amountDemanded
     }
 
     public var description: String {
-        return "\(directory):\(swapKey)"
+        return "\(directory)/\(demander)/\(amountDemanded.description)/\(nonce.description)"
     }
 }
 
-public typealias SettleState = MerkleDictionaryImpl<UInt64>
-public typealias SettleStateHeader = VolumeImpl<SettleState>
+public typealias ReceiptState = MerkleDictionaryImpl<HeaderImpl<PublicKey>>
+public typealias ReceiptStateHeader = VolumeImpl<ReceiptState>
 
-public extension SettleStateHeader {
-    func proveExistenceOfSettlement(directory: String, swapClaimActions: [SwapClaimAction], fetcher: Fetcher) async throws -> SettleStateHeader {
-        let claims = swapClaimActions.filter { !$0.isRefund }
-        if claims.isEmpty { return self }
+public extension ReceiptStateHeader {
+    func proveExistenceOfCorrespondingReceipt(directory: String, withdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
         var proofs = [[String]: SparseMerkleProof]()
-        for swapClaimAction in claims {
-            let settleKey = SettleKey(directory: directory, swapClaimAction: swapClaimAction).description
-            proofs[[settleKey]] = .mutation
+        for withdrawalAction in withdrawalActions {
+            let receiptKey = ReceiptKey(withdrawalAction: withdrawalAction, directory: directory).description
+            proofs[[receiptKey]] = .mutation
         }
         return try await proof(paths: proofs, fetcher: fetcher)
     }
 
-    func proveAndUpdateState(allSettleActions: [SettleAction], fetcher: Fetcher) async throws -> SettleStateHeader {
-        if allSettleActions.isEmpty { return self }
+    func proveAndUpdateState(allReceiptActions: [ReceiptAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
+        if allReceiptActions.isEmpty { return self }
         var proofs = [[String]: SparseMerkleProof]()
-        for settleAction in allSettleActions {
-            let settleKeyA = SettleKey(directory: settleAction.directoryA, swapKey: settleAction.swapKeyA).description
-            let settleKeyB = SettleKey(directory: settleAction.directoryB, swapKey: settleAction.swapKeyB).description
-            if proofs[[settleKeyA]] != nil { throw StateErrors.conflictingActions }
-            if proofs[[settleKeyB]] != nil { throw StateErrors.conflictingActions }
-            proofs[[settleKeyA]] = .insertion
-            proofs[[settleKeyB]] = .insertion
+        for receiptAction in allReceiptActions {
+            let receiptKey = ReceiptKey(receiptAction: receiptAction).description
+            if proofs[[receiptKey]] != nil { throw StateErrors.conflictingActions }
+            proofs[[receiptKey]] = .insertion
         }
         let proven = try await proof(paths: proofs, fetcher: fetcher)
         var transforms = [[String]: Transform]()
-        for settleAction in allSettleActions {
-            let settleKeyA = SettleKey(directory: settleAction.directoryA, swapKey: settleAction.swapKeyA).description
-            let settleKeyB = SettleKey(directory: settleAction.directoryB, swapKey: settleAction.swapKeyB).description
-            transforms[[settleKeyA]] = .insert(String(settleAction.nonce))
-            transforms[[settleKeyB]] = .insert(String(settleAction.nonce))
+        for receiptAction in allReceiptActions {
+            let receiptKey = ReceiptKey(receiptAction: receiptAction).description
+            transforms[[receiptKey]] = .insert(receiptAction.withdrawer)
         }
         guard let transformResult = try proven.transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult

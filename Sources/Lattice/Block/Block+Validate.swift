@@ -58,11 +58,12 @@ public extension Block {
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
-        let allSwapActions = transactionBodies.flatMap { $0.swapActions }
-        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee }
-        if try !validateBalanceChangesForGenesis(spec: specNode, allSwapActions: allSwapActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
+        let allDepositActions = transactionBodies.flatMap { $0.depositActions }
+        let (totalFees, feesOverflow) = Block.getTotalFees(transactionBodies)
+        if feesOverflow { return false }
+        if try !validateBalanceChangesForGenesis(spec: specNode, allDepositActions: allDepositActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: [], allSwapClaimActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: [], fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
 
@@ -87,25 +88,21 @@ public extension Block {
         let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
         if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
-        let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
-        guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
         guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
-            try await tx.validateTransactionForNexus(directory: specNode.directory, homestead: homesteadNode, blockIndex: self.index, fetcher: fetcher)
+            try await tx.validateTransactionForNexus(fetcher: fetcher)
         }) else { return false }
         if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: specNode) { return false }
         if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: specNode) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let dir = specNode.directory
-        let allAccountActions = transactionBodies.flatMap { $0.accountActions } + transactionBodies.flatMap { $0.derivedAccountActions(forChain: dir) }
-        let allSwapActions = transactionBodies.flatMap { $0.swapActions } + transactionBodies.flatMap { $0.derivedSwapActions(forChain: dir) }
-        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions } + transactionBodies.flatMap { $0.derivedSwapClaimActions(forChain: dir) }
-        let allSettleActions = transactionBodies.flatMap { $0.settleActions } + transactionBodies.flatMap { $0.derivedSettleActions() }
-        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee } + transactionBodies.reduce(0 as UInt64) { $0 + $1.derivedOrderFees(forChain: dir) }
-        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let (totalFees, feesOverflow) = Block.getTotalFees(transactionBodies)
+        if feesOverflow { return false }
+        // Nexus has no deposits or withdrawals — only receipts
+        if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: allSettleActions, fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher) { return false }
         return true
     }
 
@@ -135,7 +132,7 @@ public extension Block {
         let (homesteadState, parentStateResolved) = try await (homesteadStateFuture, parentStateFuture)
         guard let homesteadStateNode = homesteadState.node else { throw ValidationErrors.homesteadNotResolved }
         guard let parentHomesteadStateNode = parentStateResolved.node else { throw ValidationErrors.homesteadNotResolved }
-        if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, blockIndex: self.index, chainPath: chainPath, fetcher: fetcher) }).contains(false) { return false }
+        if try await txs.concurrentMap({ try await $0.validateTransaction(directory: specNode.directory, homestead: homesteadStateNode, parentState: parentHomesteadStateNode, fetcher: fetcher) }).contains(false) { return false }
         let transactionBodiesMaybe = txs.map { $0.body.node }
         if transactionBodiesMaybe.contains(where: { $0 == nil }) { throw ValidationErrors.transactionNotResolved }
         let transactionBodies = transactionBodiesMaybe.map { $0! }
@@ -146,43 +143,37 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
-        let dir = specNode.directory
-        let allAccountActions = transactionBodies.flatMap { $0.accountActions } + transactionBodies.flatMap { $0.derivedAccountActions(forChain: dir) }
-        let allSwapActions = transactionBodies.flatMap { $0.swapActions } + transactionBodies.flatMap { $0.derivedSwapActions(forChain: dir) }
-        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions } + transactionBodies.flatMap { $0.derivedSwapClaimActions(forChain: dir) }
-        let allSettleActions = transactionBodies.flatMap { $0.settleActions } + transactionBodies.flatMap { $0.derivedSettleActions() }
-        let totalFees = transactionBodies.reduce(0 as UInt64) { $0 + $1.fee } + transactionBodies.reduce(0 as UInt64) { $0 + $1.derivedOrderFees(forChain: dir) }
-        if try !validateBalanceChanges(spec: specNode, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
+        let allAccountActions = transactionBodies.flatMap { $0.accountActions }
+        let allDepositActions = transactionBodies.flatMap { $0.depositActions }
+        let allWithdrawalActions = transactionBodies.flatMap { $0.withdrawalActions }
+        let allReceiptActions = transactionBodies.flatMap { $0.receiptActions }
+        let (totalFees, feesOverflow) = Block.getTotalFees(transactionBodies)
+        if feesOverflow { return false }
+        if try !validateBalanceChanges(spec: specNode, allDepositActions: allDepositActions, allWithdrawalActions: allWithdrawalActions, allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: allSettleActions, fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, fetcher: fetcher) { return false }
         return true
     }
 
-    func validateFrontierState(transactionBodies: [TransactionBody], directory: String = "", fetcher: Fetcher) async throws -> Bool {
-        let allAccountActions = transactionBodies.flatMap { $0.accountActions } + transactionBodies.flatMap { $0.derivedAccountActions(forChain: directory) }
-        let allSwapActions = transactionBodies.flatMap { $0.swapActions } + transactionBodies.flatMap { $0.derivedSwapActions(forChain: directory) }
-        let allSwapClaimActions = transactionBodies.flatMap { $0.swapClaimActions } + transactionBodies.flatMap { $0.derivedSwapClaimActions(forChain: directory) }
-        let allSettleActions = transactionBodies.flatMap { $0.settleActions } + transactionBodies.flatMap { $0.derivedSettleActions() }
-        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allSettleActions: allSettleActions, fetcher: fetcher)
+    func validateFrontierState(transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> Bool {
+        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: transactionBodies.flatMap { $0.depositActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: transactionBodies.flatMap { $0.withdrawalActions }, fetcher: fetcher)
     }
 
-    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allSettleActions: [SettleAction], fetcher: Fetcher) async throws -> Bool {
+    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> Bool {
         let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
         async let resolvedFrontier = frontier.resolve(fetcher: fetcher)
         guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
-        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allSwapActions: allSwapActions, allSwapClaimActions: allSwapClaimActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allSettleActions: allSettleActions, transactionBodies: transactionBodies, fetcher: fetcher)
+        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
         let (finalFrontier, finalUpdatedHomestead) = await (try resolvedFrontier, try updatedHomestead)
         guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
-        return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.swapState.rawCID == finalUpdatedHomestead.swapState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.settleState.rawCID == finalUpdatedHomestead.settleState.rawCID && frontierNode.transactionState.rawCID == finalUpdatedHomestead.transactionState.rawCID
+        return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.transactionState.rawCID == finalUpdatedHomestead.transactionState.rawCID
     }
 
-    func validateBalanceChanges(spec: ChainSpec, allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
+    func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let reward = spec.rewardAtBlock(index)
-        let (totalSwapLocked, lockedOverflow) = Block.getTotalSwapLocked(allSwapActions)
-        let (totalSwapClaimed, claimedOverflow) = Block.getTotalSwapClaimed(allSwapClaimActions)
-        if lockedOverflow || claimedOverflow { return false }
-        // With deltas: sum(credits) must not exceed sum(debits) + reward + fees + swapClaimed - swapLocked
-        // Equivalently: net delta (sum of all deltas) must equal reward + fees + swapClaimed - swapLocked
+        let totalDeposited = Block.getTotalDeposited(allDepositActions)
+        let totalWithdrawn = Block.getTotalWithdrawn(allWithdrawalActions)
+        // totalCredits <= totalDebits + totalWithdrawn + reward + fees - totalDeposited
         var totalCredits: UInt64 = 0
         var totalDebits: UInt64 = 0
         for action in allAccountActions {
@@ -197,20 +188,18 @@ public extension Block {
                 totalDebits = newDebits
             }
         }
-        // Available new funds: debits + reward + fees + swapClaimed - swapLocked
         let (withReward, r1) = totalDebits.addingReportingOverflow(reward)
         let (withFees, r2) = withReward.addingReportingOverflow(totalFees)
-        let (withClaimed, r3) = withFees.addingReportingOverflow(totalSwapClaimed)
+        let (withWithdrawn, r3) = withFees.addingReportingOverflow(totalWithdrawn)
         if r1 || r2 || r3 { return false }
-        guard withClaimed >= totalSwapLocked else { return false }
-        let available = withClaimed - totalSwapLocked
+        guard withWithdrawn >= totalDeposited else { return false }
+        let available = withWithdrawn - totalDeposited
         return totalCredits <= available
     }
 
-    func validateBalanceChangesForGenesis(spec: ChainSpec, allSwapActions: [SwapAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
+    func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
-        let (totalSwapLocked, lockedOverflow) = Block.getTotalSwapLocked(allSwapActions)
-        if lockedOverflow { return false }
+        let totalDeposited = Block.getTotalDeposited(allDepositActions)
         var totalCredits: UInt64 = 0
         for action in allAccountActions {
             if action.delta > 0 {
@@ -221,8 +210,8 @@ public extension Block {
         }
         let (incomeWithFees, overflow) = premineAmount.addingReportingOverflow(totalFees)
         if overflow { return false }
-        guard incomeWithFees >= totalSwapLocked else { return false }
-        let available = incomeWithFees - totalSwapLocked
+        guard incomeWithFees >= totalDeposited else { return false }
+        let available = incomeWithFees - totalDeposited
         return totalCredits <= available
     }
 

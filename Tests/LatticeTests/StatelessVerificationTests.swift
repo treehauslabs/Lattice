@@ -63,9 +63,8 @@ final class StatelessNexusVerificationTests: XCTestCase {
         let reward = spec.rewardAtBlock(1)
         let coinbaseBody = TransactionBody(
             accountActions: [AccountAction(owner: minerAddr, delta: Int64(reward))],
-            actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-            peerActions: [], settleActions: [], signers: [minerAddr], fee: 0, nonce: 0,
-            chainPath: ["Nexus"]
+            actions: [], depositActions: [], genesisActions: [],
+            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [minerAddr], fee: 0, nonce: 0,
         )
         let ts1 = now - 29_000
         let block1 = try await BlockBuilder.buildBlock(
@@ -120,9 +119,8 @@ final class StatelessNexusVerificationTests: XCTestCase {
             previous: genesis,
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: aliceAddr, delta: Int64(spec.rewardAtBlock(1)))],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [aliceAddr], fee: 0, nonce: 0,
-                chainPath: ["Nexus"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0,
             ), alice)],
             timestamp: ts1, difficulty: difficulty,
             nextDifficulty: nextDiff(spec, previous: genesis, timestamp: ts1),
@@ -135,9 +133,8 @@ final class StatelessNexusVerificationTests: XCTestCase {
             previous: block1,
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: bobAddr, delta: Int64(spec.rewardAtBlock(2)))],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [bobAddr], fee: 0, nonce: 0,
-                chainPath: ["Nexus"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [bobAddr], fee: 0, nonce: 0,
             ), bob)],
             timestamp: ts2, difficulty: difficulty,
             nextDifficulty: nextDiff(spec, previous: block1, timestamp: ts2),
@@ -155,9 +152,8 @@ final class StatelessNexusVerificationTests: XCTestCase {
                     AccountAction(owner: aliceAddr, delta: -Int64(transfer + fee)),
                     AccountAction(owner: bobAddr, delta: Int64(transfer + spec.rewardAtBlock(3)))
                 ],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [aliceAddr], fee: fee, nonce: 1,
-                chainPath: ["Nexus"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: fee, nonce: 1,
             ), alice)],
             timestamp: ts3, difficulty: difficulty,
             nextDifficulty: nextDiff(spec, previous: block2, timestamp: ts3),
@@ -201,8 +197,8 @@ final class StatelessChildChainVerificationTests: XCTestCase {
             spec: childSpec,
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.premineAmount()))],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [ownerAddr], fee: 0, nonce: 0
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: now - 30_000, difficulty: difficulty, fetcher: producerFetcher
         )
@@ -217,10 +213,9 @@ final class StatelessChildChainVerificationTests: XCTestCase {
             previous: nexusGenesis,
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
-                actions: [], swapActions: [], swapClaimActions: [],
+                actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], settleActions: [], signers: [ownerAddr], fee: 0, nonce: 0,
-                chainPath: ["Nexus"]
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0,
             ), kp)],
             childBlocks: ["Payments": childGenesis],
             timestamp: ts1, difficulty: difficulty,
@@ -233,9 +228,8 @@ final class StatelessChildChainVerificationTests: XCTestCase {
             previous: childGenesis,
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [ownerAddr], fee: 0, nonce: 1,
-                chainPath: ["Nexus", "Payments"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 1,
             ), kp)],
             parentChainBlock: nexusBlock1,
             timestamp: ts1, difficulty: difficulty, nonce: 0, fetcher: producerFetcher
@@ -255,7 +249,6 @@ final class StatelessChildChainVerificationTests: XCTestCase {
             childBlock: childBlock1,
             parentBlock: nexusBlock1,
             ancestorSpecs: [nexusSpec],
-            chainPath: ["Nexus", "Payments"],
             fetcher: verifierFetcher
         )
         XCTAssertTrue(childValid, "Child block should validate stateless from CAS data alone")
@@ -292,9 +285,8 @@ final class TargetedResolutionTests: XCTestCase {
             let credit = Int64(reward1) / 10
             txs1.append(sign(TransactionBody(
                 accountActions: [AccountAction(owner: addrs[i], delta: credit)],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [addrs[i]], fee: 0, nonce: 0,
-                chainPath: ["Nexus"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [addrs[i]], fee: 0, nonce: 0,
             ), keyPairs[i]))
         }
 
@@ -316,9 +308,8 @@ final class TargetedResolutionTests: XCTestCase {
                     AccountAction(owner: addrs[0], delta: -transferAmount),
                     AccountAction(owner: addrs[1], delta: transferAmount + Int64(spec.rewardAtBlock(2)))
                 ],
-                actions: [], swapActions: [], swapClaimActions: [], genesisActions: [],
-                peerActions: [], settleActions: [], signers: [addrs[0]], fee: 0, nonce: 1,
-                chainPath: ["Nexus"]
+                actions: [], depositActions: [], genesisActions: [],
+                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [addrs[0]], fee: 0, nonce: 1,
             ), keyPairs[0])],
             timestamp: ts2, difficulty: difficulty,
             nextDifficulty: nextDiff(spec, previous: block1, timestamp: ts2),

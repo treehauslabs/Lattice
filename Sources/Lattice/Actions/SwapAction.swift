@@ -1,23 +1,21 @@
 import cashew
 import Foundation
 
-public struct SwapAction: Codable, Sendable {
+public struct DepositAction: Codable, Sendable {
     public let nonce: UInt128
-    public let sender: String
-    public let recipient: String
-    public let amount: UInt64
-    public let timelock: UInt64
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let amountDeposited: UInt64
 
-    public init(nonce: UInt128, sender: String, recipient: String, amount: UInt64, timelock: UInt64) {
+    public init(nonce: UInt128, demander: String, amountDemanded: UInt64, amountDeposited: UInt64) {
         self.nonce = nonce
-        self.sender = sender
-        self.recipient = recipient
-        self.amount = amount
-        self.timelock = timelock
+        self.demander = demander
+        self.amountDemanded = amountDemanded
+        self.amountDeposited = amountDeposited
     }
 
     func stateDelta() -> Int {
-        return sender.utf8.count + recipient.utf8.count + 32
+        return 32 + demander.count
     }
 
     public func totalSize() -> Int? {
@@ -29,27 +27,23 @@ public struct SwapAction: Codable, Sendable {
     }
 }
 
-public struct SettleAction: Codable, Sendable {
+public struct ReceiptAction: Codable, Sendable {
+    public let withdrawer: String
     public let nonce: UInt128
-    public let senderA: String
-    public let senderB: String
-    public let swapKeyA: String
-    public let directoryA: String
-    public let swapKeyB: String
-    public let directoryB: String
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let directory: String
 
-    public init(nonce: UInt128, senderA: String, senderB: String, swapKeyA: String, directoryA: String, swapKeyB: String, directoryB: String) {
+    public init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, directory: String) {
+        self.withdrawer = withdrawer
         self.nonce = nonce
-        self.senderA = senderA
-        self.senderB = senderB
-        self.swapKeyA = swapKeyA
-        self.directoryA = directoryA
-        self.swapKeyB = swapKeyB
-        self.directoryB = directoryB
+        self.demander = demander
+        self.amountDemanded = amountDemanded
+        self.directory = directory
     }
 
     func stateDelta() -> Int {
-        return directoryA.utf8.count + swapKeyA.utf8.count + directoryB.utf8.count + swapKeyB.utf8.count + 32
+        withdrawer.utf8.count + demander.utf8.count + directory.utf8.count + 24
     }
 
     public func totalSize() -> Int? {
@@ -61,25 +55,23 @@ public struct SettleAction: Codable, Sendable {
     }
 }
 
-public struct SwapClaimAction: Codable, Sendable {
+public struct WithdrawalAction: Codable, Sendable {
+    public let withdrawer: String
     public let nonce: UInt128
-    public let sender: String
-    public let recipient: String
-    public let amount: UInt64
-    public let timelock: UInt64
-    public let isRefund: Bool
+    public let demander: String
+    public let amountDemanded: UInt64
+    public let amountWithdrawn: UInt64
 
-    public init(nonce: UInt128, sender: String, recipient: String, amount: UInt64, timelock: UInt64, isRefund: Bool) {
+    public init(withdrawer: String, nonce: UInt128, demander: String, amountDemanded: UInt64, amountWithdrawn: UInt64) {
+        self.withdrawer = withdrawer
         self.nonce = nonce
-        self.sender = sender
-        self.recipient = recipient
-        self.amount = amount
-        self.timelock = timelock
-        self.isRefund = isRefund
+        self.demander = demander
+        self.amountDemanded = amountDemanded
+        self.amountWithdrawn = amountWithdrawn
     }
 
     func stateDelta() -> Int {
-        return 0 - sender.utf8.count - recipient.utf8.count - 32
+        withdrawer.utf8.count + demander.utf8.count + 32
     }
 
     public func totalSize() -> Int? {

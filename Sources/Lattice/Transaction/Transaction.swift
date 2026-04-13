@@ -38,19 +38,11 @@ public struct Transaction {
 
     func signaturesAreValid() -> Bool {
         guard let bodyNode = body.node else { return false }
-        let hasSignatures = !signatures.isEmpty
-        let hasOrders = !bodyNode.matchedOrders.isEmpty || !bodyNode.claimedOrders.isEmpty
-        if !hasSignatures && !hasOrders { return false }
+        if signatures.isEmpty { return false }
         for (publicKeyHex, signature) in signatures {
             if !CryptoUtils.verify(message: body.rawCID, signature: signature, publicKeyHex: publicKeyHex) {
                 return false
             }
-        }
-        for match in bodyNode.matchedOrders {
-            if !match.isValid() { return false }
-        }
-        for match in bodyNode.claimedOrders {
-            if !match.isValid() { return false }
         }
         return true
     }
@@ -73,35 +65,28 @@ public struct Transaction {
     func validateTransactionForGenesis(fetcher: Fetcher) async throws -> Bool {
         guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
         if !bodyNode.accountActionsAreValid() { return false }
-        if !bodyNode.swapActions.isEmpty { return false }
-        if !bodyNode.swapClaimActions.isEmpty { return false }
-        if !bodyNode.settleActions.isEmpty { return false }
-        if !bodyNode.matchedOrders.isEmpty { return false }
-        if !bodyNode.claimedOrders.isEmpty { return false }
+        if !bodyNode.depositActions.isEmpty { return false }
+        if !bodyNode.withdrawalActions.isEmpty { return false }
+        if !bodyNode.receiptActions.isEmpty { return false }
         return true
     }
 
-    func validateTransactionForNexus(directory: String, homestead: LatticeState, blockIndex: UInt64, fetcher: Fetcher) async throws -> Bool {
+    func validateTransactionForNexus(fetcher: Fetcher) async throws -> Bool {
         guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
-        if bodyNode.chainPath != [directory] { return false }
         if !bodyNode.accountActionsAreValid() { return false }
-        if !bodyNode.swapActionsAreValid() { return false }
-        if !bodyNode.settleActionsAreValid() { return false }
-        if !bodyNode.swapClaimActionsAreValid() { return false }
-        if !bodyNode.matchedOrdersAreValid() { return false }
-        if try await !bodyNode.validateSwapClaims(directory: directory, settleState: homestead.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
+        if !bodyNode.depositActionsAreValid() { return false }
+        if !bodyNode.receiptActionsAreValid() { return false }
+        if !bodyNode.withdrawalActionsAreValid() { return false }
         return true
     }
 
-    func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, blockIndex: UInt64, chainPath: [String], fetcher: Fetcher) async throws -> Bool {
+    func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
         guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
-        if bodyNode.chainPath != chainPath { return false }
         if !bodyNode.accountActionsAreValid() { return false }
-        if !bodyNode.swapActionsAreValid() { return false }
-        if !bodyNode.settleActionsAreValid() { return false }
-        if !bodyNode.swapClaimActionsAreValid() { return false }
-        if !bodyNode.matchedOrdersAreValid() { return false }
-        if try await !bodyNode.validateSwapClaims(directory: directory, settleState: parentState.settleState, blockIndex: blockIndex, fetcher: fetcher) { return false }
+        if !bodyNode.depositActionsAreValid() { return false }
+        if !bodyNode.receiptActionsAreValid() { return false }
+        if !bodyNode.withdrawalActionsAreValid() { return false }
+        if try await !bodyNode.withdrawalsAreValid(directory: directory, homestead: homestead, parentState: parentState, fetcher: fetcher) { return false }
         return true
     }
 }

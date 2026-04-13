@@ -81,22 +81,18 @@ public struct Block: Hashable {
         return blockCount + specCount + transactionKeysCount + totalTransactionDataCount + childBlocksKeysCount + childBlocksCount
     }
 
-
-
-    public static func getTotalSwapLocked(_ allSwapActions: [SwapAction]) -> (total: UInt64, overflow: Bool) {
-        var total: UInt64 = 0
-        for action in allSwapActions {
-            let (result, overflow) = total.addingReportingOverflow(action.amount)
-            if overflow { return (0, true) }
-            total = result
-        }
-        return (total, false)
+    public static func getTotalDeposited(_ allDepositActions: [DepositAction]) -> UInt64 {
+        allDepositActions.reduce(0) { $0 + $1.amountDeposited }
     }
 
-    public static func getTotalSwapClaimed(_ allSwapClaimActions: [SwapClaimAction]) -> (total: UInt64, overflow: Bool) {
+    public static func getTotalWithdrawn(_ allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
+        allWithdrawalActions.reduce(0) { $0 + $1.amountWithdrawn }
+    }
+
+    public static func getTotalFees(_ transactionBodies: [TransactionBody]) -> (total: UInt64, overflow: Bool) {
         var total: UInt64 = 0
-        for action in allSwapClaimActions {
-            let (result, overflow) = total.addingReportingOverflow(action.amount)
+        for body in transactionBodies {
+            let (result, overflow) = total.addingReportingOverflow(body.fee)
             if overflow { return (0, true) }
             total = result
         }

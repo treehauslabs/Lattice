@@ -116,7 +116,7 @@ Every `ChainLevel` owns a `ChainState` actor that manages block metadata, fork t
 
 **Three-phase state model.** Each block carries `parentHomestead` (parent chain's state), `homestead` (confirmed state entering the block), and `frontier` (state after applying transactions). This is what makes trustless cross-chain verification possible without querying another chain at validation time.
 
-**Seven partitioned sub-states.** World state is split into seven independent Sparse Merkle Trees (accounts, general KV, swaps, settlements, peers, genesis blocks, transaction nonces). All seven are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
+**Eight partitioned sub-states.** World state is split into eight independent Sparse Merkle Trees (accounts, general KV, swaps, settlements, peers, genesis blocks, transaction nonces, order locks). All eight are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
 
 **Actor-based concurrency.** The consensus layer maps directly onto Swift's actor model. Each chain is an isolated actor. Reorganizations propagate through the actor hierarchy without shared mutable state. Swift 6's strict sendability checking catches data races at compile time.
 
@@ -139,11 +139,13 @@ Block arrives
 
 ### Cross-chain value transfer
 
-Atomic swaps between chains use a two-phase protocol:
+Cross-chain exchange supports two modes:
 
-1. **Swap** — Lock funds in the source chain's `SwapState` Merkle tree with a timelock and designated recipient
-2. **Settle** — Both parties prove matching swaps exist on their respective chains, recorded in `SettleState`
-3. **Claim** — Recipient claims funds by proving settlement exists; sender can reclaim after timelock expiry
+**Instant matching** — A matcher pairs two crossing orders in the same transaction. Funds are debited, locked in `SwapState`, settled on the nexus, and claimable by counterparties. Three phases: lock, settle, claim/refund.
+
+**Persistent order book** — Makers post signed orders on-chain. Funds are escrowed in `OrderLockState` at post time. Orders persist across blocks until filled or cancelled. Fills convert order locks into swap locks, entering the same settle/claim flow. Cancellations return the exact locked amount to the maker.
+
+Both modes share the same settlement and claim infrastructure. Settlement is recorded on the **lowest common ancestor (LCA)** of the two source chains — not always the nexus. This means swaps between tokens on the same child chain settle on that child chain, reducing nexus load. Claim verification checks both the chain's own settle state and its parent's, so claims work regardless of where settlement was placed.
 
 Cross-chain replay protection is enforced via `chainPath` — each transaction declares the exact chain hierarchy path it targets (e.g., `["Nexus", "Payments"]`). Transactions are rejected if the `chainPath` doesn't match the validating chain.
 
@@ -200,8 +202,9 @@ Sources/Lattice/
 ├── Lattice/          Lattice actor, ChainState, ChainLevel
 ├── Block/            Block structure, validation, ChainSpec
 ├── Transaction/      Transaction, TransactionBody, signatures
-├── Actions/          Account, Swap, SwapClaim, Settle, Genesis, Peer, Action
-├── State/            LatticeState + 7 sub-state Sparse Merkle Trees
+├── Actions/          Account, Swap, SwapClaim, Settle, Genesis, Peer, Order, Action
+├── Exchange/         SwapOrder, SignedOrder, MatchedOrder, OrderCancellation
+├── State/            LatticeState + 8 sub-state Sparse Merkle Trees
 ├── Core/             PublicKey type
 ├── CryptoUtils.swift secp256k1 ECDSA, SHA-256, key generation
 └── UInt256+Extensions.swift
@@ -214,7 +217,7 @@ Sources/Lattice/
 | Hash | SHA-256 | Block hashes, Merkle trees, difficulty, addresses |
 | Signature | secp256k1 ECDSA | Transaction authorization (33-byte compressed keys, 64-byte compact signatures) |
 | Content addressing | CID (DAG-CBOR + SHA-256) | All data structure references |
-| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 7 sub-states |
+| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 8 sub-states |
 
 ## Dependencies
 
@@ -235,8 +238,9 @@ Sources/Lattice/
 
 - [x] Block validation (genesis, nexus, child chain)
 - [x] Three-phase state model (parentHomestead / homestead / frontier)
-- [x] Seven partitioned Sparse Merkle Tree sub-states with concurrent updates
+- [x] Eight partitioned Sparse Merkle Tree sub-states with concurrent updates
 - [x] Cross-chain atomic swap/settle protocol
+- [x] Persistent on-chain order book with lock-at-post-time escrow
 - [x] Nakamoto fork choice with parent chain anchoring
 - [x] Reorganization propagation through chain hierarchy
 - [x] Configurable ChainSpec with halving schedule and difficulty adjustment

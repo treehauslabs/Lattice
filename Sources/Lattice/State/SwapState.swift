@@ -1,73 +1,102 @@
 import cashew
 
-public struct SwapKey: LosslessStringConvertible {
+public struct DepositKey: LosslessStringConvertible {
     public let nonce: UInt128
-    public let sender: String
-    public let recipient: String
-    public let amount: UInt64
-    public let timelock: UInt64
+    public let demander: String
+    public let amountDemanded: UInt64
 
-    public init(swapAction: SwapAction) {
-        nonce = swapAction.nonce
-        sender = swapAction.sender
-        recipient = swapAction.recipient
-        amount = swapAction.amount
-        timelock = swapAction.timelock
+    public init(depositAction: DepositAction) {
+        nonce = depositAction.nonce
+        demander = depositAction.demander
+        amountDemanded = depositAction.amountDemanded
     }
 
-    public init(swapClaimAction: SwapClaimAction) {
-        nonce = swapClaimAction.nonce
-        sender = swapClaimAction.sender
-        recipient = swapClaimAction.recipient
-        amount = swapClaimAction.amount
-        timelock = swapClaimAction.timelock
+    public init(withdrawalAction: WithdrawalAction) {
+        nonce = withdrawalAction.nonce
+        demander = withdrawalAction.demander
+        amountDemanded = withdrawalAction.amountDemanded
+    }
+
+    public init(nonce: UInt128, demander: String, amountDemanded: UInt64) {
+        self.nonce = nonce
+        self.demander = demander
+        self.amountDemanded = amountDemanded
     }
 
     public init?(_ description: String) {
-        let split = description.split(separator: "/", maxSplits: 5, omittingEmptySubsequences: true)
-        guard split.count >= 5 else { return nil }
-        sender = String(split[0])
-        recipient = String(split[1])
-        guard let amount = UInt64(String(split[2])) else { return nil }
-        guard let timelock = UInt64(String(split[3])) else { return nil }
-        guard let nonce = UInt128(String(split[4])) else { return nil }
-        self.amount = amount
-        self.timelock = timelock
+        let split = description.split(separator: "/", maxSplits: 3, omittingEmptySubsequences: true)
+        guard split.count >= 3 else { return nil }
+        let demander = String(split[0])
+        guard let amountDemanded = UInt64(String(split[1])) else { return nil }
+        guard let nonce = UInt128(String(split[2])) else { return nil }
         self.nonce = nonce
+        self.demander = demander
+        self.amountDemanded = amountDemanded
     }
 
     public var description: String {
-        return "\(sender)/\(recipient)/\(amount)/\(timelock)/\(nonce)"
+        return "\(demander)/\(amountDemanded.description)/\(nonce.description)"
     }
 }
 
-public typealias SwapState = MerkleDictionaryImpl<UInt64>
-public typealias SwapStateHeader = VolumeImpl<SwapState>
+public typealias DepositState = MerkleDictionaryImpl<UInt64>
+public typealias DepositStateHeader = VolumeImpl<DepositState>
 
-public extension SwapStateHeader {
-    func proveAndUpdateState(allSwapActions: [SwapAction], allSwapClaimActions: [SwapClaimAction], fetcher: Fetcher) async throws -> SwapStateHeader {
-        if allSwapActions.isEmpty && allSwapClaimActions.isEmpty { return self }
+public extension DepositStateHeader {
+    func proveExistenceOfCorrespondingDeposit(withdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> DepositStateHeader {
         var proofs = [[String]: SparseMerkleProof]()
-        for swapAction in allSwapActions {
-            if swapAction.amount == 0 { throw StateErrors.conflictingActions }
-            let swapKey = SwapKey(swapAction: swapAction).description
-            if proofs[[swapKey]] != nil { throw StateErrors.conflictingActions }
-            proofs[[swapKey]] = .insertion
+        for withdrawalAction in withdrawalActions {
+            let depositKey = DepositKey(withdrawalAction: withdrawalAction).description
+            proofs[[depositKey]] = .mutation
         }
-        for swapClaimAction in allSwapClaimActions {
-            let swapKey = SwapKey(swapClaimAction: swapClaimAction).description
-            if proofs[[swapKey]] != nil { throw StateErrors.conflictingActions }
-            proofs[[swapKey]] = .deletion
+        return try await proof(paths: proofs, fetcher: fetcher)
+    }
+
+    func proveAndDeleteForWithdrawals(allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> DepositStateHeader {
+        if allWithdrawalActions.isEmpty { return self }
+        var resolvePaths = [[String]: ResolutionStrategy]()
+        for wa in allWithdrawalActions {
+            resolvePaths[[DepositKey(withdrawalAction: wa).description]] = .targeted
+        }
+        let resolved = try await resolve(paths: resolvePaths, fetcher: fetcher)
+        var proofs = [[String]: SparseMerkleProof]()
+        var transforms = [[String]: Transform]()
+        for wa in allWithdrawalActions {
+            let key = DepositKey(withdrawalAction: wa).description
+            let exists: Bool
+            if let node = resolved.node, (try? node.get(key: key)) != nil {
+                exists = true
+            } else {
+                exists = false
+            }
+            if exists {
+                proofs[[key]] = .deletion
+                transforms[[key]] = .delete
+            }
+        }
+        if proofs.isEmpty { return self }
+        let proven = try await proof(paths: proofs, fetcher: fetcher)
+        guard let result = try proven.transform(transforms: transforms) else {
+            throw TransformErrors.transformFailed("deposit deletion transform returned nil")
+        }
+        return result
+    }
+
+    func proveAndUpdateState(allDepositActions: [DepositAction], fetcher: Fetcher) async throws -> DepositStateHeader {
+        if allDepositActions.isEmpty { return self }
+        var proofs = [[String]: SparseMerkleProof]()
+        for depositAction in allDepositActions {
+            if depositAction.amountDeposited != depositAction.amountDemanded { throw StateErrors.conflictingActions }
+            if depositAction.amountDeposited == 0 { throw StateErrors.conflictingActions }
+            let depositKey = DepositKey(depositAction: depositAction).description
+            if proofs[[depositKey]] != nil { throw StateErrors.conflictingActions }
+            proofs[[depositKey]] = .insertion
         }
         let proven = try await proof(paths: proofs, fetcher: fetcher)
         var transforms = [[String]: Transform]()
-        for swapAction in allSwapActions {
-            let swapKey = SwapKey(swapAction: swapAction).description
-            transforms[[swapKey]] = .insert(String(swapAction.amount))
-        }
-        for swapClaimAction in allSwapClaimActions {
-            let swapKey = SwapKey(swapClaimAction: swapClaimAction).description
-            transforms[[swapKey]] = .delete
+        for depositAction in allDepositActions {
+            let depositKey = DepositKey(depositAction: depositAction).description
+            transforms[[depositKey]] = .insert(String(depositAction.amountDeposited))
         }
         guard let transformResult = try proven.transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
         return transformResult
