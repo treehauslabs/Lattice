@@ -183,7 +183,11 @@ public actor ChainLevel {
         guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
         let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
 
-        // chainPath validation removed — no longer part of TransactionBody
+        for body in bodies {
+            if !body.chainPath.isEmpty && body.chainPath != chainPath {
+                return false
+            }
+        }
 
         if let specNode = childBlock.spec.node {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }

@@ -50,7 +50,7 @@ public struct TransactionBody: Scalar {
     func withdrawalActionsAreValid() -> Bool {
         let signerSet = Set(signers)
         for withdrawalAction in withdrawalActions {
-            if withdrawalAction.amountWithdrawn > withdrawalAction.amountDemanded { return false }
+            if withdrawalAction.amountWithdrawn != withdrawalAction.amountDemanded { return false }
             if withdrawalAction.amountWithdrawn == 0 { return false }
             if !signerSet.contains(withdrawalAction.withdrawer) { return false }
         }
@@ -60,7 +60,7 @@ public struct TransactionBody: Scalar {
     func withdrawalsAreValid(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
         if withdrawalActions.isEmpty { return true }
         async let proofOfDeposits = homestead.depositState.proveExistenceOfCorrespondingDeposit(withdrawalActions: withdrawalActions, fetcher: fetcher)
-        async let proofOfReceipts = parentState.receiptState.proveExistenceOfCorrespondingReceipt(directory: directory, withdrawalActions: withdrawalActions, fetcher: fetcher)
+        async let proofOfReceipts = parentState.receiptState.proveExistenceAndVerifyWithdrawers(directory: directory, withdrawalActions: withdrawalActions, fetcher: fetcher)
         let (_, _) = try await (proofOfDeposits, proofOfReceipts)
         return true
     }

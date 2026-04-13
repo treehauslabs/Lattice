@@ -42,13 +42,22 @@ public typealias ReceiptState = MerkleDictionaryImpl<HeaderImpl<PublicKey>>
 public typealias ReceiptStateHeader = VolumeImpl<ReceiptState>
 
 public extension ReceiptStateHeader {
-    func proveExistenceOfCorrespondingReceipt(directory: String, withdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
+    func proveExistenceAndVerifyWithdrawers(directory: String, withdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
         var proofs = [[String]: SparseMerkleProof]()
         for withdrawalAction in withdrawalActions {
             let receiptKey = ReceiptKey(withdrawalAction: withdrawalAction, directory: directory).description
             proofs[[receiptKey]] = .mutation
         }
-        return try await proof(paths: proofs, fetcher: fetcher)
+        let proven = try await proof(paths: proofs, fetcher: fetcher)
+        guard let node = proven.node else { throw StateErrors.conflictingActions }
+        for wa in withdrawalActions {
+            let key = ReceiptKey(withdrawalAction: wa, directory: directory).description
+            guard let stored: HeaderImpl<PublicKey> = try? node.get(key: key) else {
+                throw StateErrors.conflictingActions
+            }
+            if stored.rawCID != wa.withdrawer { throw StateErrors.conflictingActions }
+        }
+        return proven
     }
 
     func proveAndUpdateState(allReceiptActions: [ReceiptAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {

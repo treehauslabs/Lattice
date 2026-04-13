@@ -54,9 +54,12 @@ public extension DepositStateHeader {
 
     func proveAndDeleteForWithdrawals(allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> DepositStateHeader {
         if allWithdrawalActions.isEmpty { return self }
+        var seenKeys = Set<String>()
         var resolvePaths = [[String]: ResolutionStrategy]()
         for wa in allWithdrawalActions {
-            resolvePaths[[DepositKey(withdrawalAction: wa).description]] = .targeted
+            let key = DepositKey(withdrawalAction: wa).description
+            if !seenKeys.insert(key).inserted { throw StateErrors.conflictingActions }
+            resolvePaths[[key]] = .targeted
         }
         let resolved = try await resolve(paths: resolvePaths, fetcher: fetcher)
         var proofs = [[String]: SparseMerkleProof]()

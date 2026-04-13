@@ -96,6 +96,7 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
+        if !validateChainPaths(transactionBodies: transactionBodies, expectedPath: [specNode.directory]) { return false }
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
         let (totalFees, feesOverflow) = Block.getTotalFees(transactionBodies)
         if feesOverflow { return false }
@@ -143,6 +144,7 @@ public extension Block {
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
+        if !validateChainPaths(transactionBodies: transactionBodies, expectedPath: chainPath) { return false }
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
         let allDepositActions = transactionBodies.flatMap { $0.depositActions }
         let allWithdrawalActions = transactionBodies.flatMap { $0.withdrawalActions }
@@ -171,8 +173,10 @@ public extension Block {
 
     func validateBalanceChanges(spec: ChainSpec, allDepositActions: [DepositAction], allWithdrawalActions: [WithdrawalAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let reward = spec.rewardAtBlock(index)
-        let totalDeposited = Block.getTotalDeposited(allDepositActions)
-        let totalWithdrawn = Block.getTotalWithdrawn(allWithdrawalActions)
+        let (totalDeposited, depOverflow) = Block.getTotalDeposited(allDepositActions)
+        if depOverflow { return false }
+        let (totalWithdrawn, wdOverflow) = Block.getTotalWithdrawn(allWithdrawalActions)
+        if wdOverflow { return false }
         // totalCredits <= totalDebits + totalWithdrawn + reward + fees - totalDeposited
         var totalCredits: UInt64 = 0
         var totalDebits: UInt64 = 0
@@ -199,7 +203,8 @@ public extension Block {
 
     func validateBalanceChangesForGenesis(spec: ChainSpec, allDepositActions: [DepositAction], allAccountActions: [AccountAction], totalFees: UInt64) throws -> Bool {
         let premineAmount = spec.premineAmount()
-        let totalDeposited = Block.getTotalDeposited(allDepositActions)
+        let (totalDeposited, depOverflow) = Block.getTotalDeposited(allDepositActions)
+        if depOverflow { return false }
         var totalCredits: UInt64 = 0
         for action in allAccountActions {
             if action.delta > 0 {
@@ -276,6 +281,15 @@ public extension Block {
     func validateBlockSize(spec: ChainSpec) -> Bool {
         guard let blockData = toData() else { return false }
         return blockData.count <= spec.maxBlockSize
+    }
+
+    func validateChainPaths(transactionBodies: [TransactionBody], expectedPath: [String]) -> Bool {
+        for body in transactionBodies {
+            if !body.chainPath.isEmpty && body.chainPath != expectedPath {
+                return false
+            }
+        }
+        return true
     }
 
     func resolveTransactionBodies(fetcher: Fetcher, validator: @escaping @Sendable (Transaction) async throws -> Bool) async throws -> [TransactionBody]? {

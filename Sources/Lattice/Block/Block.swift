@@ -81,12 +81,24 @@ public struct Block: Hashable {
         return blockCount + specCount + transactionKeysCount + totalTransactionDataCount + childBlocksKeysCount + childBlocksCount
     }
 
-    public static func getTotalDeposited(_ allDepositActions: [DepositAction]) -> UInt64 {
-        allDepositActions.reduce(0) { $0 + $1.amountDeposited }
+    public static func getTotalDeposited(_ allDepositActions: [DepositAction]) -> (total: UInt64, overflow: Bool) {
+        var total: UInt64 = 0
+        for action in allDepositActions {
+            let (result, overflow) = total.addingReportingOverflow(action.amountDeposited)
+            if overflow { return (0, true) }
+            total = result
+        }
+        return (total, false)
     }
 
-    public static func getTotalWithdrawn(_ allWithdrawalActions: [WithdrawalAction]) -> UInt64 {
-        allWithdrawalActions.reduce(0) { $0 + $1.amountWithdrawn }
+    public static func getTotalWithdrawn(_ allWithdrawalActions: [WithdrawalAction]) -> (total: UInt64, overflow: Bool) {
+        var total: UInt64 = 0
+        for action in allWithdrawalActions {
+            let (result, overflow) = total.addingReportingOverflow(action.amountWithdrawn)
+            if overflow { return (0, true) }
+            total = result
+        }
+        return (total, false)
     }
 
     public static func getTotalFees(_ transactionBodies: [TransactionBody]) -> (total: UInt64, overflow: Bool) {
