@@ -34,6 +34,7 @@ public struct TransactionBody: Scalar {
         let signerSet = Set(signers)
         for depositAction in depositActions {
             if depositAction.amountDeposited == 0 { return false }
+            if depositAction.amountDeposited != depositAction.amountDemanded { return false }
             if !signerSet.contains(depositAction.demander) { return false }
         }
         return true
@@ -43,6 +44,7 @@ public struct TransactionBody: Scalar {
         let signerSet = Set(signers)
         for receiptAction in receiptActions {
             if !signerSet.contains(receiptAction.withdrawer) { return false }
+            if !signerSet.contains(receiptAction.demander) { return false }
         }
         return true
     }

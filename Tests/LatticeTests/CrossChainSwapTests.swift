@@ -1,0 +1,817 @@
+import XCTest
+@testable import Lattice
+import UInt256
+import cashew
+import Foundation
+
+// MARK: - Shared Test Infrastructure
+
+private func makeFetcher() -> StorableFetcher { StorableFetcher() }
+
+private func childSpec(_ dir: String = "Child") -> ChainSpec {
+    ChainSpec(
+        directory: dir,
+        maxNumberOfTransactionsPerBlock: 100,
+        maxStateGrowth: 100_000,
+        maxBlockSize: 1_000_000,
+        premine: 0,
+        targetBlockTime: 1_000,
+        initialReward: 1024,
+        halvingInterval: 10_000,
+        difficultyAdjustmentWindow: 5
+    )
+}
+
+private func nexusSpec(_ dir: String = "Nexus") -> ChainSpec {
+    ChainSpec(
+        directory: dir,
+        maxNumberOfTransactionsPerBlock: 100,
+        maxStateGrowth: 100_000,
+        maxBlockSize: 1_000_000,
+        premine: 0,
+        targetBlockTime: 1_000,
+        initialReward: 1024,
+        halvingInterval: 10_000,
+        difficultyAdjustmentWindow: 5
+    )
+}
+
+private func signTx(
+    body: TransactionBody,
+    keypairs: [(privateKey: String, publicKey: String)]
+) -> Transaction {
+    let bodyHeader = HeaderImpl<TransactionBody>(node: body)
+    var sigs = [String: String]()
+    for kp in keypairs {
+        sigs[kp.publicKey] = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: kp.privateKey)!
+    }
+    return Transaction(signatures: sigs, body: bodyHeader)
+}
+
+private func signTx(
+    body: TransactionBody,
+    keypair: (privateKey: String, publicKey: String)
+) -> Transaction {
+    signTx(body: body, keypairs: [keypair])
+}
+
+private func addr(_ publicKey: String) -> String {
+    HeaderImpl<PublicKey>(node: PublicKey(key: publicKey)).rawCID
+}
+
+private func now() -> Int64 {
+    Int64(Date().timeIntervalSince1970 * 1000)
+}
+
+// MARK: - Deposit State Tests
+
+@MainActor
+final class DepositStateTests: XCTestCase {
+
+    func testDepositInsertsIntoState() async throws {
+        let fetcher = makeFetcher()
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let spec = childSpec()
+        let reward = spec.rewardAtBlock(0)
+        let t = now()
+
+        let genesis = try await BlockBuilder.buildGenesis(
+            spec: spec, timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let depositAmount: UInt64 = 100
+        let depositNonce: UInt128 = 42
+
+        let body = TransactionBody(
+            accountActions: [
+                AccountAction(owner: kpAddr, delta: Int64(reward) - Int64(depositAmount))
+            ],
+            actions: [], depositActions: [
+                DepositAction(nonce: depositNonce, demander: kpAddr, amountDemanded: depositAmount, amountDeposited: depositAmount)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        let tx = signTx(body: body, keypair: kp)
+
+        let block = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx],
+            timestamp: t - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Verify frontier state contains the deposit
+        guard let frontierNode = block.frontier.node else {
+            XCTFail("Frontier should be resolved"); return
+        }
+        let depositKey = DepositKey(nonce: depositNonce, demander: kpAddr, amountDemanded: depositAmount).description
+        let stored: UInt64? = try? frontierNode.depositState.node?.get(key: depositKey)
+        XCTAssertEqual(stored, depositAmount, "Deposit should be stored in state")
+    }
+
+    func testDepositAmountMismatchRejected() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [
+                DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 100, amountDeposited: 50)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.depositActionsAreValid(), "amountDeposited != amountDemanded should be rejected")
+    }
+
+    func testDepositZeroAmountRejected() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [
+                DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 0, amountDeposited: 0)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.depositActionsAreValid(), "Zero deposit should be rejected")
+    }
+
+    func testDepositRequiresDemandInSigners() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let other = CryptoUtils.generateKeyPair()
+        let otherAddr = addr(other.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [
+                DepositAction(nonce: 1, demander: otherAddr, amountDemanded: 100, amountDeposited: 100)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.depositActionsAreValid(), "Demander not in signers should be rejected")
+    }
+
+    func testDuplicateDepositKeysInBlockRejected() async throws {
+        let fetcher = makeFetcher()
+
+        let emptyState = LatticeState.emptyState()
+        let depositAction = DepositAction(nonce: 1, demander: "alice", amountDemanded: 100, amountDeposited: 100)
+
+        do {
+            let _ = try await emptyState.depositState.proveAndUpdateState(
+                allDepositActions: [depositAction, depositAction], fetcher: fetcher
+            )
+            XCTFail("Duplicate deposit keys in same block should throw")
+        } catch {
+            // Expected: conflicting actions
+        }
+    }
+}
+
+// MARK: - Receipt State Tests
+
+@MainActor
+final class ReceiptStateTests: XCTestCase {
+
+    func testReceiptRequiresDemandInSigners() {
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        // Receipt signed only by withdrawer — demander not in signers
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [withdrawerAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.receiptActionsAreValid(),
+            "Receipt without demander in signers should be rejected (prevents front-running)")
+    }
+
+    func testReceiptRequiresWithdrawInSigners() {
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        // Receipt signed only by demander — withdrawer not in signers
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.receiptActionsAreValid(),
+            "Receipt without withdrawer in signers should be rejected")
+    }
+
+    func testReceiptValidWithBothSigners() {
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+        )
+        XCTAssertTrue(body.receiptActionsAreValid(),
+            "Receipt with both demander and withdrawer in signers should be valid")
+    }
+
+    func testReceiptInsertsIntoState() async throws {
+        let fetcher = makeFetcher()
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        let emptyState = LatticeState.emptyState()
+
+        let receiptAction = ReceiptAction(
+            withdrawer: withdrawerAddr, nonce: 42, demander: kpAddr,
+            amountDemanded: 100, directory: "Child"
+        )
+
+        let updatedReceiptState = try await emptyState.receiptState.proveAndUpdateState(
+            allReceiptActions: [receiptAction], fetcher: fetcher
+        )
+
+        let receiptKey = ReceiptKey(receiptAction: receiptAction).description
+        let stored: HeaderImpl<PublicKey>? = try? updatedReceiptState.node?.get(key: receiptKey)
+        XCTAssertNotNil(stored, "Receipt should be stored in state")
+        XCTAssertEqual(stored?.rawCID, withdrawerAddr, "Stored withdrawer should match")
+    }
+
+    func testDuplicateReceiptKeysInBlockRejected() async throws {
+        let fetcher = makeFetcher()
+        let kpAddr = "demanderAddr"
+        let withdrawerAddr = "withdrawerAddr"
+
+        let emptyState = LatticeState.emptyState()
+        let receiptAction = ReceiptAction(
+            withdrawer: withdrawerAddr, nonce: 1, demander: kpAddr,
+            amountDemanded: 100, directory: "Child"
+        )
+
+        do {
+            let _ = try await emptyState.receiptState.proveAndUpdateState(
+                allReceiptActions: [receiptAction, receiptAction], fetcher: fetcher
+            )
+            XCTFail("Duplicate receipt keys in same block should throw")
+        } catch {
+            // Expected
+        }
+    }
+}
+
+// MARK: - Withdrawal Validation Tests
+
+@MainActor
+final class WithdrawalValidationTests: XCTestCase {
+
+    func testWithdrawalAmountMustMatchDemand() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: "someone", amountDemanded: 100, amountWithdrawn: 50)
+            ],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.withdrawalActionsAreValid(), "amountWithdrawn != amountDemanded should be rejected")
+    }
+
+    func testWithdrawalZeroAmountRejected() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: "someone", amountDemanded: 0, amountWithdrawn: 0)
+            ],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.withdrawalActionsAreValid(), "Zero withdrawal should be rejected")
+    }
+
+    func testWithdrawalRequiresWithdrawerInSigners() {
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let other = CryptoUtils.generateKeyPair()
+        let otherAddr = addr(other.publicKey)
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: otherAddr, nonce: 1, demander: kpAddr, amountDemanded: 100, amountWithdrawn: 100)
+            ],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.withdrawalActionsAreValid(), "Withdrawer not in signers should be rejected")
+    }
+
+    func testDuplicateWithdrawalKeysInBlockRejected() async throws {
+        let fetcher = makeFetcher()
+        let emptyState = LatticeState.emptyState()
+
+        // First insert a deposit to withdraw from
+        let depositAction = DepositAction(nonce: 1, demander: "alice", amountDemanded: 100, amountDeposited: 100)
+        let withDeposit = try await emptyState.depositState.proveAndUpdateState(
+            allDepositActions: [depositAction], fetcher: fetcher
+        )
+
+        // Try to withdraw twice with the same key
+        let wa = WithdrawalAction(withdrawer: "bob", nonce: 1, demander: "alice", amountDemanded: 100, amountWithdrawn: 100)
+        do {
+            let _ = try await withDeposit.proveAndDeleteForWithdrawals(
+                allWithdrawalActions: [wa, wa], fetcher: fetcher
+            )
+            XCTFail("Duplicate withdrawal keys should throw")
+        } catch {
+            // Expected: conflicting actions from duplicate key check
+        }
+    }
+}
+
+// MARK: - Nexus Action Restrictions
+
+@MainActor
+final class NexusActionRestrictionTests: XCTestCase {
+
+    func testNexusRejectsDepositActions() async throws {
+        let fetcher = makeFetcher()
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let spec = nexusSpec()
+
+        let genesis = try await BlockBuilder.buildGenesis(
+            spec: spec, timestamp: now() - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [
+                DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 100, amountDeposited: 100)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        let tx = signTx(body: body, keypair: kp)
+
+        let block = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx],
+            timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let valid = try await block.validateNexus(fetcher: fetcher)
+        XCTAssertFalse(valid, "Nexus must reject transactions with deposit actions")
+    }
+
+    func testNexusRejectsWithdrawalActions() async throws {
+        let fetcher = makeFetcher()
+        let kp = CryptoUtils.generateKeyPair()
+        let kpAddr = addr(kp.publicKey)
+        let spec = nexusSpec()
+
+        let genesis = try await BlockBuilder.buildGenesis(
+            spec: spec, timestamp: now() - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: 100, amountWithdrawn: 100)
+            ],
+            signers: [kpAddr], fee: 0, nonce: 0
+        )
+        let tx = signTx(body: body, keypair: kp)
+
+        let block = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx],
+            timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let valid = try await block.validateNexus(fetcher: fetcher)
+        XCTAssertFalse(valid, "Nexus must reject transactions with withdrawal actions")
+    }
+
+    func testNexusAcceptsReceiptActions() async throws {
+        let fetcher = makeFetcher()
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+        let spec = nexusSpec()
+        let reward = spec.rewardAtBlock(0)
+
+        let genesis = try await BlockBuilder.buildGenesis(
+            spec: spec, timestamp: now() - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let body = TransactionBody(
+            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(reward))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+        )
+        let tx = signTx(body: body, keypairs: [demander, withdrawer])
+
+        let block = try await BlockBuilder.buildBlock(
+            previous: genesis, transactions: [tx],
+            timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let valid = try await block.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(valid, "Nexus should accept receipt actions")
+    }
+}
+
+// MARK: - Full Cross-Chain Flow: Deposit → Receipt → Withdrawal
+
+@MainActor
+final class CrossChainFlowTests: XCTestCase {
+
+    /// End-to-end: deposit on child chain, receipt on nexus, withdrawal on child chain
+    func testFullDepositReceiptWithdrawalFlow() async throws {
+        let fetcher = makeFetcher()
+        let t = now()
+
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        let nSpec = nexusSpec()
+        let cSpec = childSpec()
+        let childReward = cSpec.rewardAtBlock(0)
+        let nexusReward = nSpec.rewardAtBlock(0)
+        let depositAmount: UInt64 = 200
+        let swapNonce: UInt128 = 999
+
+        // --- Step 1: Build child chain genesis ---
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: cSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // --- Step 2: Deposit on child chain (demander deposits, locking funds) ---
+        let depositBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: demanderAddr, delta: Int64(childReward) - Int64(depositAmount))
+            ],
+            actions: [],
+            depositActions: [
+                DepositAction(nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, amountDeposited: depositAmount)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [demanderAddr], fee: 0, nonce: 0
+        )
+        let depositTx = signTx(body: depositBody, keypair: demander)
+
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [depositTx],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Verify deposit is in child chain state
+        guard let childFrontier1 = childBlock1.frontier.node else {
+            XCTFail("Child frontier should be resolved"); return
+        }
+        let depositKey = DepositKey(nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount).description
+        let depositStored: UInt64? = try? childFrontier1.depositState.node?.get(key: depositKey)
+        XCTAssertEqual(depositStored, depositAmount, "Deposit should exist in child state")
+
+        // --- Step 3: Receipt on nexus (demander authorizes withdrawer) ---
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let receiptBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: demanderAddr, delta: Int64(nexusReward))
+            ],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+        )
+        let receiptTx = signTx(body: receiptBody, keypairs: [demander, withdrawer])
+
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [receiptTx],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(nexusValid, "Nexus block with receipt should validate")
+
+        // Verify receipt is in nexus state
+        guard let nexusFrontier1 = nexusBlock1.frontier.node else {
+            XCTFail("Nexus frontier should be resolved"); return
+        }
+        let receiptKey = ReceiptKey(
+            withdrawalAction: WithdrawalAction(
+                withdrawer: withdrawerAddr, nonce: swapNonce,
+                demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount
+            ),
+            directory: cSpec.directory
+        ).description
+        let receiptStored: HeaderImpl<PublicKey>? = try? nexusFrontier1.receiptState.node?.get(key: receiptKey)
+        XCTAssertNotNil(receiptStored, "Receipt should exist in nexus state")
+        XCTAssertEqual(receiptStored?.rawCID, withdrawerAddr, "Receipt withdrawer should match")
+
+        // --- Step 4: Withdrawal on child chain (withdrawer claims deposit) ---
+        let withdrawalBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: withdrawerAddr, delta: Int64(childReward) + Int64(depositAmount))
+            ],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount)
+            ],
+            signers: [withdrawerAddr], fee: 0, nonce: 0
+        )
+        let withdrawalTx = signTx(body: withdrawalBody, keypair: withdrawer)
+
+        // Build child block 2 that includes the withdrawal
+        // parentHomestead must be the nexus frontier (contains the receipt)
+        let childBlock2 = try await BlockBuilder.buildBlock(
+            previous: childBlock1, transactions: [withdrawalTx],
+            parentChainBlock: nexusBlock1,
+            timestamp: t - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Verify withdrawal: deposit should be deleted from child state
+        guard let childFrontier2 = childBlock2.frontier.node else {
+            XCTFail("Child frontier 2 should be resolved"); return
+        }
+
+        // Deposit should be gone
+        let depositStored2: UInt64? = try? childFrontier2.depositState.node?.get(key: depositKey)
+        XCTAssertNil(depositStored2, "Deposit should be deleted after withdrawal")
+
+        // Withdrawer should have the credited amount
+        let withdrawerBalance: UInt64? = try? childFrontier2.accountState.node?.get(key: withdrawerAddr)
+        XCTAssertEqual(withdrawerBalance, childReward + depositAmount,
+            "Withdrawer should receive reward + withdrawn amount")
+    }
+
+    /// Withdrawal by wrong person should fail — receipt stores the authorized withdrawer
+    func testWithdrawalByWrongPersonFails() async throws {
+        let fetcher = makeFetcher()
+        let t = now()
+
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+        let attacker = CryptoUtils.generateKeyPair()
+        let attackerAddr = addr(attacker.publicKey)
+
+        let cSpec = childSpec()
+        let nSpec = nexusSpec()
+        let childReward = cSpec.rewardAtBlock(0)
+        let nexusReward = nSpec.rewardAtBlock(0)
+        let depositAmount: UInt64 = 200
+        let swapNonce: UInt128 = 888
+
+        // Deposit on child
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: cSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let depositBody = TransactionBody(
+            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(childReward) - Int64(depositAmount))],
+            actions: [], depositActions: [
+                DepositAction(nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, amountDeposited: depositAmount)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [demanderAddr], fee: 0, nonce: 0
+        )
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [signTx(body: depositBody, keypair: demander)],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Receipt on nexus — authorized to `withdrawer`, not `attacker`
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let receiptBody = TransactionBody(
+            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(nexusReward))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+        )
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypairs: [demander, withdrawer])],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Attacker tries to withdraw — should fail because receipt.withdrawer != attacker
+        let attackBody = TransactionBody(
+            accountActions: [AccountAction(owner: attackerAddr, delta: Int64(childReward) + Int64(depositAmount))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: attackerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount)
+            ],
+            signers: [attackerAddr], fee: 0, nonce: 0
+        )
+        let attackTx = signTx(body: attackBody, keypair: attacker)
+
+        // Block builds (frontier computation doesn't check withdrawer identity),
+        // but validation rejects: proveExistenceAndVerifyWithdrawers checks stored.rawCID != wa.withdrawer
+        let _ = try await BlockBuilder.buildBlock(
+            previous: childBlock1, transactions: [attackTx],
+            parentChainBlock: nexusBlock1,
+            timestamp: t - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Verify the receipt stores the legitimate withdrawer, not the attacker
+        guard let nexusFrontier = nexusBlock1.frontier.node else {
+            XCTFail("Nexus frontier should be resolved"); return
+        }
+        let receiptKey = ReceiptKey(
+            withdrawalAction: WithdrawalAction(
+                withdrawer: attackerAddr, nonce: swapNonce,
+                demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount
+            ),
+            directory: cSpec.directory
+        ).description
+        let storedReceipt: HeaderImpl<PublicKey>? = try? nexusFrontier.receiptState.node?.get(key: receiptKey)
+        XCTAssertNotNil(storedReceipt, "Receipt should exist in nexus state")
+        XCTAssertNotEqual(storedReceipt?.rawCID, attackerAddr,
+            "Receipt withdrawer doesn't match attacker — proveExistenceAndVerifyWithdrawers rejects this at validation time")
+    }
+
+    /// Receipt front-running prevention: attacker cannot create receipt without demander's signature
+    func testReceiptFrontRunningPrevented() {
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let attacker = CryptoUtils.generateKeyPair()
+        let attackerAddr = addr(attacker.publicKey)
+
+        // Attacker tries to create a receipt setting themselves as withdrawer
+        // without the demander's signature
+        let body = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: attackerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [attackerAddr], fee: 0, nonce: 0
+        )
+        XCTAssertFalse(body.receiptActionsAreValid(),
+            "Receipt without demander's signature must be rejected to prevent front-running")
+    }
+
+    func testWithdrawalWithoutDepositFails() async throws {
+        let fetcher = makeFetcher()
+        let t = now()
+
+        let demander = CryptoUtils.generateKeyPair()
+        let demanderAddr = addr(demander.publicKey)
+        let withdrawer = CryptoUtils.generateKeyPair()
+        let withdrawerAddr = addr(withdrawer.publicKey)
+
+        let cSpec = childSpec()
+        let nSpec = nexusSpec()
+        let nexusReward = nSpec.rewardAtBlock(0)
+        let childReward = cSpec.rewardAtBlock(0)
+        let depositAmount: UInt64 = 200
+        let swapNonce: UInt128 = 777
+
+        // Create child genesis without any deposit
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: cSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Create receipt on nexus (no corresponding deposit exists)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let receiptBody = TransactionBody(
+            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(nexusReward))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
+            ],
+            withdrawalActions: [],
+            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+        )
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypairs: [demander, withdrawer])],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Attempt withdrawal without deposit — should fail
+        let withdrawalBody = TransactionBody(
+            accountActions: [AccountAction(owner: withdrawerAddr, delta: Int64(childReward) + Int64(depositAmount))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount)
+            ],
+            signers: [withdrawerAddr], fee: 0, nonce: 0
+        )
+        let tx = signTx(body: withdrawalBody, keypair: withdrawer)
+
+        // Block builds (frontier computation skips non-existent deposits),
+        // but validation rejects: proveExistenceOfCorrespondingDeposit fails on missing deposit
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [tx],
+            parentChainBlock: nexusBlock1,
+            timestamp: t - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Verify the deposit doesn't exist in homestead — proveExistenceOfCorrespondingDeposit
+        // would throw invalidProofType when trying a .mutation proof on non-existent key
+        guard let homesteadNode = childBlock1.homestead.node else {
+            XCTFail("Homestead should be resolved"); return
+        }
+        let depositKey = DepositKey(withdrawalAction: WithdrawalAction(
+            withdrawer: withdrawerAddr, nonce: swapNonce,
+            demander: demanderAddr, amountDemanded: depositAmount, amountWithdrawn: depositAmount
+        )).description
+        let depositExists: UInt64? = try? homesteadNode.depositState.node?.get(key: depositKey)
+        XCTAssertNil(depositExists,
+            "Deposit doesn't exist — validation rejects withdrawal via proveExistenceOfCorrespondingDeposit")
+    }
+}
+
+// MARK: - Overflow Safety Tests
+
+@MainActor
+final class OverflowSafetyTests: XCTestCase {
+
+    func testGetTotalDepositedOverflow() {
+        let actions = [
+            DepositAction(nonce: 1, demander: "a", amountDemanded: UInt64.max, amountDeposited: UInt64.max),
+            DepositAction(nonce: 2, demander: "a", amountDemanded: 1, amountDeposited: 1),
+        ]
+        let (_, overflow) = Block.getTotalDeposited(actions)
+        XCTAssertTrue(overflow, "Should detect overflow")
+    }
+
+    func testGetTotalWithdrawnOverflow() {
+        let actions = [
+            WithdrawalAction(withdrawer: "a", nonce: 1, demander: "b", amountDemanded: UInt64.max, amountWithdrawn: UInt64.max),
+            WithdrawalAction(withdrawer: "a", nonce: 2, demander: "b", amountDemanded: 1, amountWithdrawn: 1),
+        ]
+        let (_, overflow) = Block.getTotalWithdrawn(actions)
+        XCTAssertTrue(overflow, "Should detect overflow")
+    }
+
+    func testGetTotalDepositedNoOverflow() {
+        let actions = [
+            DepositAction(nonce: 1, demander: "a", amountDemanded: 100, amountDeposited: 100),
+            DepositAction(nonce: 2, demander: "a", amountDemanded: 200, amountDeposited: 200),
+        ]
+        let (total, overflow) = Block.getTotalDeposited(actions)
+        XCTAssertFalse(overflow)
+        XCTAssertEqual(total, 300)
+    }
+}

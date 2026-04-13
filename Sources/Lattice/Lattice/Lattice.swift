@@ -179,20 +179,37 @@ public actor ChainLevel {
             if childBlock.homestead.rawCID != emptyState.rawCID { return false }
         }
 
+        guard let specNode = try? await childBlock.spec.resolve(fetcher: fetcher).node else { return false }
+
         guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
         guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
-        let bodies = txKeysAndValues.values.compactMap { $0.node?.body.node }
+        let txHeaders = txKeysAndValues.values
+        if txHeaders.contains(where: { $0.node == nil }) { return false }
+        let txs = txHeaders.map { $0.node! }
 
-        for body in bodies {
-            if !body.chainPath.isEmpty && body.chainPath != chainPath {
-                return false
-            }
+        // Validate each transaction's signatures and authorization
+        async let homesteadStateFuture = childBlock.homestead.resolve(fetcher: fetcher)
+        async let parentStateFuture = childBlock.parentHomestead.resolve(fetcher: fetcher)
+        guard let homesteadStateNode = try? await homesteadStateFuture.node else { return false }
+        guard let parentHomesteadStateNode = try? await parentStateFuture.node else { return false }
+        for tx in txs {
+            guard let valid = try? await tx.validateTransaction(
+                directory: specNode.directory,
+                homestead: homesteadStateNode,
+                parentState: parentHomesteadStateNode,
+                fetcher: fetcher
+            ) else { return false }
+            if !valid { return false }
         }
 
-        if let specNode = childBlock.spec.node {
-            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }
-            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: specNode) { return false }
-        }
+        let bodiesMaybe = txs.map { $0.body.node }
+        if bodiesMaybe.contains(where: { $0 == nil }) { return false }
+        let bodies = bodiesMaybe.map { $0! }
+
+        if !childBlock.validateChainPaths(transactionBodies: bodies, expectedPath: chainPath) { return false }
+
+        if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: specNode) { return false }
 
         if let parentSpecNode = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: parentSpecNode) { return false }
@@ -203,6 +220,24 @@ public actor ChainLevel {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: ancestorSpec) { return false }
             if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { return false }
         }
+
+        if !childBlock.validateMaxTransactionCount(spec: specNode, transactionBodies: bodies) { return false }
+        if (try? childBlock.validateStateDeltaSize(spec: specNode, transactionBodies: bodies)) != true { return false }
+        if !childBlock.validateBlockSize(spec: specNode) { return false }
+
+        // Balance conservation
+        let allAccountActions = bodies.flatMap { $0.accountActions }
+        let allDepositActions = bodies.flatMap { $0.depositActions }
+        let allWithdrawalActions = bodies.flatMap { $0.withdrawalActions }
+        let (totalFees, feesOverflow) = Block.getTotalFees(bodies)
+        if feesOverflow { return false }
+        if (try? childBlock.validateBalanceChanges(
+            spec: specNode,
+            allDepositActions: allDepositActions,
+            allWithdrawalActions: allWithdrawalActions,
+            allAccountActions: allAccountActions,
+            totalFees: totalFees
+        )) != true { return false }
 
         // Verify frontier state root: re-derive from homestead + transactions
         guard let frontierValid = try? await childBlock.validateFrontierState(

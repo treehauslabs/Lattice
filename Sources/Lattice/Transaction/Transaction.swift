@@ -73,10 +73,10 @@ public struct Transaction {
 
     func validateTransactionForNexus(fetcher: Fetcher) async throws -> Bool {
         guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
+        if !bodyNode.depositActions.isEmpty { return false }
+        if !bodyNode.withdrawalActions.isEmpty { return false }
         if !bodyNode.accountActionsAreValid() { return false }
-        if !bodyNode.depositActionsAreValid() { return false }
         if !bodyNode.receiptActionsAreValid() { return false }
-        if !bodyNode.withdrawalActionsAreValid() { return false }
         return true
     }
 

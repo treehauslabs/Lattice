@@ -463,8 +463,7 @@ final class CrossChainTests: XCTestCase {
             spec: nexusSpec, timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
-        // Withdrawal actions are ignored on Nexus — they don't affect state or
-        // balance validation. A block with a no-op withdrawal still validates.
+        // Nexus must reject transactions containing withdrawal actions
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [],
@@ -481,9 +480,8 @@ final class CrossChainTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx],
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        // Nexus ignores withdrawal actions, so frontier states match and the block validates
         let valid = try await block.validateNexus(fetcher: fetcher)
-        XCTAssertTrue(valid, "Nexus ignores withdrawal actions so the block should validate")
+        XCTAssertFalse(valid, "Nexus must reject transactions with withdrawal actions")
     }
 
     func testChildChainGenesisViaGenesisAction() async throws {
