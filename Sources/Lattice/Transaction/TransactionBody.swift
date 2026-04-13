@@ -41,6 +41,11 @@ public struct TransactionBody: Scalar {
     }
 
     func receiptActionsAreValid() -> Bool {
+        let signerSet = Set(signers)
+        for receipt in receiptActions {
+            if receipt.amountDemanded == 0 { return false }
+            if !signerSet.contains(receipt.withdrawer) { return false }
+        }
         return true
     }
 

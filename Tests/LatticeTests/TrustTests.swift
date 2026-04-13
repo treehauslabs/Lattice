@@ -325,8 +325,16 @@ final class CrossChainRoundtripTests: XCTestCase {
         let bobSwap = DepositAction(nonce: 1, demander: bobAddr, amountDemanded: bobSwapAmount, amountDeposited: bobSwapAmount)
 
         let t1 = base + 1000
+        // Fund bob on nexus so he can pay alice via receipt in the settle step
+        let fundBobBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
+            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
         let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis, timestamp: t1,
+            previous: nexusGenesis, transactions: [tx(fundBobBody, bob)],
+            timestamp: t1,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
@@ -484,7 +492,8 @@ final class SwapAuthorizationTests: XCTestCase {
         let aliceAddr = id(alice.publicKey)
         let bobAddr = id(bob.publicKey)
 
-        // Receipt withdrawer is bob but only alice signs
+        // Receipt withdrawer is bob but only alice signs — rejected because
+        // the receipt debits bob's funds, so bob must authorize
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
@@ -492,7 +501,7 @@ final class SwapAuthorizationTests: XCTestCase {
             withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 0
         )
-        XCTAssertTrue(body.receiptActionsAreValid(), "Receipt actions don't require specific signers — authorization comes from account action signing")
+        XCTAssertFalse(body.receiptActionsAreValid(), "Withdrawer must sign — their nexus funds are debited by the receipt")
     }
 
     func testSettleAndClaimInSameBlockFails() async throws {

@@ -178,7 +178,7 @@ final class DepositStateTests: XCTestCase {
 @MainActor
 final class ReceiptStateTests: XCTestCase {
 
-    func testReceiptDoesNotRequireSpecificSigners() {
+    func testReceiptRequiresWithdrawerInSigners() {
         let demander = CryptoUtils.generateKeyPair()
         let demanderAddr = addr(demander.publicKey)
         let withdrawer = CryptoUtils.generateKeyPair()
@@ -186,9 +186,9 @@ final class ReceiptStateTests: XCTestCase {
         let thirdParty = CryptoUtils.generateKeyPair()
         let thirdPartyAddr = addr(thirdParty.publicKey)
 
-        // Receipt signed by a third party (not demander or withdrawer)
-        // Authorization comes from account action signing, not receipt-specific checks
-        let body = TransactionBody(
+        // Receipt signed by a third party (not the withdrawer) — should be rejected
+        // because the receipt debits the withdrawer's nexus funds
+        let bodyMissing = TransactionBody(
             accountActions: [],
             actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
@@ -198,8 +198,22 @@ final class ReceiptStateTests: XCTestCase {
             withdrawalActions: [],
             signers: [thirdPartyAddr], fee: 0, nonce: 0
         )
-        XCTAssertTrue(body.receiptActionsAreValid(),
-            "Receipt actions don't require specific signers — funds locking ensures security")
+        XCTAssertFalse(bodyMissing.receiptActionsAreValid(),
+            "Withdrawer must be in signers — their funds are debited by the receipt")
+
+        // Receipt signed by withdrawer — should pass
+        let bodyValid = TransactionBody(
+            accountActions: [],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [withdrawerAddr], fee: 0, nonce: 0
+        )
+        XCTAssertTrue(bodyValid.receiptActionsAreValid(),
+            "Receipt with withdrawer in signers should be valid")
     }
 
     func testReceiptInsertsIntoState() async throws {
@@ -401,17 +415,18 @@ final class NexusActionRestrictionTests: XCTestCase {
             spec: spec, timestamp: now() - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
+        // Withdrawer gets the block reward (funds the receipt payment to demander)
         let body = TransactionBody(
-            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(reward))],
+            accountActions: [AccountAction(owner: withdrawerAddr, delta: Int64(reward))],
             actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
             receiptActions: [
                 ReceiptAction(withdrawer: withdrawerAddr, nonce: 1, demander: demanderAddr, amountDemanded: 100, directory: "Child")
             ],
             withdrawalActions: [],
-            signers: [demanderAddr], fee: 0, nonce: 0
+            signers: [withdrawerAddr], fee: 0, nonce: 0
         )
-        let tx = signTx(body: body, keypair: demander)
+        let tx = signTx(body: body, keypair: withdrawer)
 
         let block = try await BlockBuilder.buildBlock(
             previous: genesis, transactions: [tx],
@@ -476,14 +491,15 @@ final class CrossChainFlowTests: XCTestCase {
         let depositStored: UInt64? = try? childFrontier1.depositState.node?.get(key: depositKey)
         XCTAssertEqual(depositStored, depositAmount, "Deposit should exist in child state")
 
-        // --- Step 3: Receipt on nexus (demander authorizes withdrawer) ---
+        // --- Step 3: Receipt on nexus (withdrawer pays demander) ---
         let nexusGenesis = try await BlockBuilder.buildGenesis(
             spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
+        // Withdrawer gets the block reward and pays demander via receipt
         let receiptBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: demanderAddr, delta: Int64(nexusReward))
+                AccountAction(owner: withdrawerAddr, delta: Int64(nexusReward))
             ],
             actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
@@ -491,9 +507,9 @@ final class CrossChainFlowTests: XCTestCase {
                 ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
             ],
             withdrawalActions: [],
-            signers: [demanderAddr], fee: 0, nonce: 0
+            signers: [withdrawerAddr], fee: 0, nonce: 0
         )
-        let receiptTx = signTx(body: receiptBody, keypair: demander)
+        let receiptTx = signTx(body: receiptBody, keypair: withdrawer)
 
         let nexusBlock1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [receiptTx],
@@ -594,18 +610,19 @@ final class CrossChainFlowTests: XCTestCase {
         let nexusGenesis = try await BlockBuilder.buildGenesis(
             spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
         )
+        // Withdrawer pays demander via receipt (funded by block reward)
         let receiptBody = TransactionBody(
-            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(nexusReward))],
+            accountActions: [AccountAction(owner: withdrawerAddr, delta: Int64(nexusReward))],
             actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
             receiptActions: [
                 ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
             ],
             withdrawalActions: [],
-            signers: [demanderAddr], fee: 0, nonce: 0
+            signers: [withdrawerAddr], fee: 0, nonce: 0
         )
         let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypair: demander)],
+            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypair: withdrawer)],
             timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
@@ -646,18 +663,14 @@ final class CrossChainFlowTests: XCTestCase {
             "Receipt withdrawer doesn't match attacker — proveExistenceAndVerifyWithdrawers rejects this at validation time")
     }
 
-    /// Unauthorized withdrawal prevented: receipt stores withdrawer but validation checks match
-    func testUnauthorizedWithdrawalPreventedByProof() {
-        // Even though anyone can create a receipt, the withdrawal proof system
-        // ensures only the designated withdrawer can claim. If an attacker creates
-        // a fraudulent receipt, proveExistenceAndVerifyWithdrawers checks the stored
-        // withdrawer matches the withdrawal action's withdrawer at validation time.
+    /// Receipt requires withdrawer authorization since their funds are debited
+    func testReceiptWithdrawerMustSign() {
         let attacker = CryptoUtils.generateKeyPair()
         let attackerAddr = addr(attacker.publicKey)
         let legitimate = CryptoUtils.generateKeyPair()
         let legitimateAddr = addr(legitimate.publicKey)
 
-        // Receipt actions themselves are always valid (no signer restriction)
+        // Withdrawer signs — valid
         let body = TransactionBody(
             accountActions: [],
             actions: [], depositActions: [],
@@ -669,7 +682,7 @@ final class CrossChainFlowTests: XCTestCase {
             signers: [attackerAddr], fee: 0, nonce: 0
         )
         XCTAssertTrue(body.receiptActionsAreValid(),
-            "Receipt actions pass validation — withdrawal proof system prevents unauthorized claims")
+            "Receipt with withdrawer in signers should be valid")
     }
 
     func testWithdrawalWithoutDepositFails() async throws {
@@ -693,22 +706,23 @@ final class CrossChainFlowTests: XCTestCase {
             spec: cSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
-        // Create receipt on nexus (no corresponding deposit exists)
+        // Create receipt on nexus (no corresponding deposit exists on child)
         let nexusGenesis = try await BlockBuilder.buildGenesis(
             spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
         )
+        // Withdrawer pays demander via receipt (funded by block reward)
         let receiptBody = TransactionBody(
-            accountActions: [AccountAction(owner: demanderAddr, delta: Int64(nexusReward))],
+            accountActions: [AccountAction(owner: withdrawerAddr, delta: Int64(nexusReward))],
             actions: [], depositActions: [],
             genesisActions: [], peerActions: [],
             receiptActions: [
                 ReceiptAction(withdrawer: withdrawerAddr, nonce: swapNonce, demander: demanderAddr, amountDemanded: depositAmount, directory: cSpec.directory)
             ],
             withdrawalActions: [],
-            signers: [demanderAddr], fee: 0, nonce: 0
+            signers: [withdrawerAddr], fee: 0, nonce: 0
         )
         let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypair: demander)],
+            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypair: withdrawer)],
             timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 

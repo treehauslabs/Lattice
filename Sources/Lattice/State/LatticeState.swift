@@ -63,7 +63,16 @@ public struct LatticeState: Node {
     }
 
     public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> LatticeState {
-        async let newAccountState = accountState.proveAndUpdateState(allAccountActions: allAccountActions, fetcher: fetcher)
+        // Receipt actions generate implicit account transfers: debit withdrawer, credit demander
+        var mergedAccountActions = allAccountActions
+        for receipt in allReceiptActions {
+            guard receipt.amountDemanded > 0 && receipt.amountDemanded <= UInt64(Int64.max) else {
+                throw StateErrors.balanceOverflow
+            }
+            mergedAccountActions.append(AccountAction(owner: receipt.withdrawer, delta: -Int64(receipt.amountDemanded)))
+            mergedAccountActions.append(AccountAction(owner: receipt.demander, delta: Int64(receipt.amountDemanded)))
+        }
+        async let newAccountState = accountState.proveAndUpdateState(allAccountActions: mergedAccountActions, fetcher: fetcher)
         async let newGeneralState = generalState.proveAndUpdateState(allActions: allActions, fetcher: fetcher)
         async let newGenesisState = genesisState.proveAndUpdateState(allGenesisActions: allGenesisActions, fetcher: fetcher)
         async let newPeerState = peerState.proveAndUpdateState(allPeerActions: allPeerActions, fetcher: fetcher)

@@ -82,9 +82,9 @@ public struct Transaction {
 
     func validateTransaction(directory: String, homestead: LatticeState, parentState: LatticeState, fetcher: Fetcher) async throws -> Bool {
         guard let bodyNode = try await validateSignaturesAndResolve(fetcher: fetcher) else { return false }
+        if !bodyNode.receiptActions.isEmpty { return false }
         if !bodyNode.accountActionsAreValid() { return false }
         if !bodyNode.depositActionsAreValid() { return false }
-        if !bodyNode.receiptActionsAreValid() { return false }
         if !bodyNode.withdrawalActionsAreValid() { return false }
         if try await !bodyNode.withdrawalsAreValid(directory: directory, homestead: homestead, parentState: parentState, fetcher: fetcher) { return false }
         return true

@@ -376,9 +376,10 @@ final class CrossChainTests: XCTestCase {
             spec: nexusSpec, timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
 
+        // Withdrawer gets the block reward and pays demander 500 via receipt
         let settleBody = TransactionBody(
             accountActions: [
-                AccountAction(owner: demanderAddr, delta: Int64(reward))
+                AccountAction(owner: withdrawerAddr, delta: Int64(reward))
             ],
             actions: [],
             depositActions: [],
@@ -393,12 +394,11 @@ final class CrossChainTests: XCTestCase {
                 )
             ],
             withdrawalActions: [],
-            signers: [demanderAddr, withdrawerAddr], fee: 0, nonce: 0
+            signers: [withdrawerAddr], fee: 0, nonce: 0
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: settleBody)
-        let sigA = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: demander.privateKey)!
         let sigB = CryptoUtils.sign(message: bodyHeader.rawCID, privateKeyHex: withdrawer.privateKey)!
-        let settleTx = Transaction(signatures: [demander.publicKey: sigA, withdrawer.publicKey: sigB], body: bodyHeader)
+        let settleTx = Transaction(signatures: [withdrawer.publicKey: sigB], body: bodyHeader)
 
         let nexusBlock1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis, transactions: [settleTx],
