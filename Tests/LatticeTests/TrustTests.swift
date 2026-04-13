@@ -492,7 +492,7 @@ final class SwapAuthorizationTests: XCTestCase {
             withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 0
         )
-        XCTAssertFalse(body.receiptActionsAreValid(), "Receipt with withdrawer not in signers should be rejected")
+        XCTAssertTrue(body.receiptActionsAreValid(), "Receipt actions don't require specific signers — authorization comes from account action signing")
     }
 
     func testSettleAndClaimInSameBlockFails() async throws {
