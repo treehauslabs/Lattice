@@ -62,7 +62,7 @@ public struct LatticeState: Node {
         )
     }
 
-    public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> LatticeState {
+    public func proveAndUpdateState(allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], transactionBodies: [TransactionBody], childWithdrawals: [String: [WithdrawalAction]] = [:], fetcher: Fetcher) async throws -> LatticeState {
         // Receipt actions generate implicit account transfers: debit withdrawer, credit demander
         var mergedAccountActions = allAccountActions
         for receipt in allReceiptActions {
@@ -76,7 +76,9 @@ public struct LatticeState: Node {
         async let newGeneralState = generalState.proveAndUpdateState(allActions: allActions, fetcher: fetcher)
         async let newGenesisState = genesisState.proveAndUpdateState(allGenesisActions: allGenesisActions, fetcher: fetcher)
         async let newPeerState = peerState.proveAndUpdateState(allPeerActions: allPeerActions, fetcher: fetcher)
-        async let newReceiptState = receiptState.proveAndUpdateState(allReceiptActions: allReceiptActions, fetcher: fetcher)
+        // Insert new receipts, then delete receipts for completed child withdrawals
+        let afterInserts = try await receiptState.proveAndUpdateState(allReceiptActions: allReceiptActions, fetcher: fetcher)
+        async let newReceiptState = afterInserts.proveAndDeleteCompletedReceipts(childWithdrawals: childWithdrawals, fetcher: fetcher)
         async let newTransactionState = transactionState.proveAndUpdateState(allTransactions: transactionBodies, fetcher: fetcher)
         let afterWithdrawals = try await depositState.proveAndDeleteForWithdrawals(allWithdrawalActions: allWithdrawalActions, fetcher: fetcher)
         async let newDepositState = afterWithdrawals.proveAndUpdateState(allDepositActions: allDepositActions, fetcher: fetcher)

@@ -74,9 +74,24 @@ public struct BlockBuilder {
         let blockNextDifficulty = nextDifficulty ?? previous.nextDifficulty
 
         let transactionBodies = transactions.compactMap { $0.body.node }
+        // Extract withdrawal actions from child blocks to prune completed receipts
+        var childWithdrawals = [String: [WithdrawalAction]]()
+        for (directory, childBlock) in childBlocks {
+            guard let txNode = childBlock.transactions.node else { continue }
+            guard let txEntries = try? txNode.allKeysAndValues() else { continue }
+            var withdrawals = [WithdrawalAction]()
+            for (_, txHeader) in txEntries {
+                guard let tx = txHeader.node, let body = tx.body.node else { continue }
+                withdrawals.append(contentsOf: body.withdrawalActions)
+            }
+            if !withdrawals.isEmpty {
+                childWithdrawals[directory] = withdrawals
+            }
+        }
         let frontier = try await computeFrontier(
             homestead: homestead,
             transactionBodies: transactionBodies,
+            childWithdrawals: childWithdrawals,
             fetcher: fetcher
         )
 
@@ -161,9 +176,10 @@ public struct BlockBuilder {
     static func computeFrontier(
         homestead: LatticeStateHeader,
         transactionBodies: [TransactionBody],
+        childWithdrawals: [String: [WithdrawalAction]] = [:],
         fetcher: Fetcher
     ) async throws -> LatticeStateHeader {
-        if transactionBodies.isEmpty {
+        if transactionBodies.isEmpty && childWithdrawals.isEmpty {
             return homestead
         }
 
@@ -175,6 +191,7 @@ public struct BlockBuilder {
             return try await computeFrontierFromState(
                 state: resolvedNode,
                 transactionBodies: transactionBodies,
+                childWithdrawals: childWithdrawals,
                 fetcher: fetcher
             )
         }
@@ -182,6 +199,7 @@ public struct BlockBuilder {
         return try await computeFrontierFromState(
             state: homesteadNode,
             transactionBodies: transactionBodies,
+            childWithdrawals: childWithdrawals,
             fetcher: fetcher
         )
     }
@@ -189,6 +207,7 @@ public struct BlockBuilder {
     static func computeFrontierFromState(
         state: LatticeState,
         transactionBodies: [TransactionBody],
+        childWithdrawals: [String: [WithdrawalAction]] = [:],
         fetcher: Fetcher
     ) async throws -> LatticeStateHeader {
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
@@ -208,6 +227,7 @@ public struct BlockBuilder {
             allReceiptActions: allReceiptActions,
             allWithdrawalActions: allWithdrawalActions,
             transactionBodies: transactionBodies,
+            childWithdrawals: childWithdrawals,
             fetcher: fetcher
         )
 

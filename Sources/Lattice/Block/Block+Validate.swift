@@ -103,7 +103,9 @@ public extension Block {
         // Nexus has no deposits or withdrawals — only receipts
         if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher) { return false }
+        // Extract withdrawal actions from child blocks to prune completed receipts
+        let childWithdrawals = try await extractChildWithdrawals(fetcher: fetcher)
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], childWithdrawals: childWithdrawals, fetcher: fetcher) { return false }
         return true
     }
 
@@ -161,11 +163,11 @@ public extension Block {
         return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: transactionBodies.flatMap { $0.depositActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: transactionBodies.flatMap { $0.withdrawalActions }, fetcher: fetcher)
     }
 
-    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> Bool {
+    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], childWithdrawals: [String: [WithdrawalAction]] = [:], fetcher: Fetcher) async throws -> Bool {
         let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
         async let resolvedFrontier = frontier.resolve(fetcher: fetcher)
         guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
-        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
+        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, childWithdrawals: childWithdrawals, fetcher: fetcher)
         let (finalFrontier, finalUpdatedHomestead) = await (try resolvedFrontier, try updatedHomestead)
         guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
         return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID && frontierNode.transactionState.rawCID == finalUpdatedHomestead.transactionState.rawCID
@@ -307,5 +309,29 @@ public extension Block {
         return try await !transactionBodies.concurrentMap { transactionBody in
             try await transactionBody.genesisActionsAreValid(fetcher: fetcher, parentSpec: parentSpec)
         }.contains(false)
+    }
+
+    /// Extract withdrawal actions from embedded child blocks so the nexus can
+    /// delete the corresponding receipts during state computation.
+    func extractChildWithdrawals(fetcher: Fetcher) async throws -> [String: [WithdrawalAction]] {
+        guard let childBlocksNode = try await childBlocks.resolveRecursive(fetcher: fetcher).node else {
+            return [:]
+        }
+        let entries = try childBlocksNode.allKeysAndValues()
+        var result = [String: [WithdrawalAction]]()
+        for (directory, blockHeader) in entries {
+            guard let childBlock = blockHeader.node else { continue }
+            guard let txNode = try await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { continue }
+            let txHeaders = try txNode.allKeysAndValues().values
+            var withdrawals = [WithdrawalAction]()
+            for txHeader in txHeaders {
+                guard let tx = txHeader.node, let body = tx.body.node else { continue }
+                withdrawals.append(contentsOf: body.withdrawalActions)
+            }
+            if !withdrawals.isEmpty {
+                result[directory] = withdrawals
+            }
+        }
+        return result
     }
 }

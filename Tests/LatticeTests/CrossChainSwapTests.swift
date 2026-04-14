@@ -437,6 +437,150 @@ final class NexusActionRestrictionTests: XCTestCase {
     }
 }
 
+// MARK: - Atomic Swap Auto-Claim Tests
+
+@MainActor
+final class AtomicSwapCycleTests: XCTestCase {
+
+    /// Verifies the seller receives nexus payment automatically when the receipt is mined,
+    /// without any explicit claim transaction. This is the "auto-claim" for sellers.
+    func testSellerAutoReceivesNexusPaymentViaReceipt() async throws {
+        let fetcher = makeFetcher()
+        let t = now()
+        let seller = CryptoUtils.generateKeyPair()
+        let sellerAddr = addr(seller.publicKey)
+        let buyer = CryptoUtils.generateKeyPair()
+        let buyerAddr = addr(buyer.publicKey)
+        let nSpec = nexusSpec()
+        let nexusReward = nSpec.rewardAtBlock(1)
+        let swapNonce: UInt128 = 77
+        let swapAmount: UInt64 = 500
+
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nSpec, timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Seller has 0 nexus balance initially
+        let sellerBefore: UInt64 = (try? nexusGenesis.frontier.node?.accountState.node?.get(key: sellerAddr)) ?? 0
+        XCTAssertEqual(sellerBefore, 0, "Seller should have 0 nexus balance before receipt")
+
+        // Block 1: buyer gets block reward and submits receipt → seller auto-credited
+        let receiptBody = TransactionBody(
+            accountActions: [
+                AccountAction(owner: buyerAddr, delta: Int64(nexusReward))
+            ],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: buyerAddr, nonce: swapNonce,
+                              demander: sellerAddr, amountDemanded: swapAmount, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [buyerAddr], fee: 0, nonce: 0
+        )
+        let nexusBlock = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [signTx(body: receiptBody, keypair: buyer)],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let frontier = nexusBlock.frontier.node!
+
+        // Seller auto-credited via implicit receipt transfer (no claim tx needed)
+        let sellerAfter: UInt64 = (try? frontier.accountState.node?.get(key: sellerAddr)) ?? 0
+        XCTAssertEqual(sellerAfter, swapAmount,
+                       "Seller should auto-receive nexus payment when receipt is mined — no separate claim needed")
+
+        // Buyer: explicit +nexusReward, implicit -swapAmount from receipt
+        let buyerAfter: UInt64 = (try? frontier.accountState.node?.get(key: buyerAddr)) ?? 0
+        XCTAssertEqual(buyerAfter, nexusReward - swapAmount,
+                       "Buyer balance: block reward minus implicit receipt transfer")
+
+        let valid = try await nexusBlock.validateNexus(fetcher: fetcher)
+        XCTAssertTrue(valid, "Nexus block with receipt should be valid")
+    }
+
+    /// Verifies a second withdrawal on the same deposit key is rejected (replay protection).
+    func testDoubleWithdrawalRejected() async throws {
+        let fetcher = makeFetcher()
+        let t = now()
+        let seller = CryptoUtils.generateKeyPair()
+        let sellerAddr = addr(seller.publicKey)
+        let buyer = CryptoUtils.generateKeyPair()
+        let buyerAddr = addr(buyer.publicKey)
+        let cSpec = childSpec()
+        let childReward1 = cSpec.rewardAtBlock(1)
+        let childReward2 = cSpec.rewardAtBlock(2)
+        let childReward3 = cSpec.rewardAtBlock(3)
+        let swapNonce: UInt128 = 42
+        let swapAmount: UInt64 = 100
+
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: cSpec, timestamp: t - 40_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Block 1: seller deposits (funded by block reward)
+        let depositBody = TransactionBody(
+            accountActions: [AccountAction(owner: sellerAddr, delta: Int64(childReward1) - Int64(swapAmount))],
+            actions: [],
+            depositActions: [
+                DepositAction(nonce: swapNonce, demander: sellerAddr,
+                              amountDemanded: swapAmount, amountDeposited: swapAmount)
+            ],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [sellerAddr], fee: 0, nonce: 0
+        )
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [signTx(body: depositBody, keypair: seller)],
+            timestamp: t - 30_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Block 2: first withdrawal (valid — buyer claims deposit)
+        let withdrawBody1 = TransactionBody(
+            accountActions: [AccountAction(owner: buyerAddr, delta: Int64(childReward2 + swapAmount))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: buyerAddr, nonce: swapNonce,
+                                 demander: sellerAddr, amountDemanded: swapAmount, amountWithdrawn: swapAmount)
+            ],
+            signers: [buyerAddr], fee: 0, nonce: 0
+        )
+        let childBlock2 = try await BlockBuilder.buildBlock(
+            previous: childBlock1, transactions: [signTx(body: withdrawBody1, keypair: buyer)],
+            timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Deposit should be consumed
+        let depositKey = DepositKey(nonce: swapNonce, demander: sellerAddr, amountDemanded: swapAmount).description
+        let depositAfter: UInt64? = try? childBlock2.frontier.node?.depositState.node?.get(key: depositKey)
+        XCTAssertNil(depositAfter, "Deposit should be consumed after first withdrawal")
+
+        // Block 3: second withdrawal on same key — should be invalid
+        let withdrawBody2 = TransactionBody(
+            accountActions: [AccountAction(owner: buyerAddr, delta: Int64(childReward3 + swapAmount))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [
+                WithdrawalAction(withdrawer: buyerAddr, nonce: swapNonce,
+                                 demander: sellerAddr, amountDemanded: swapAmount, amountWithdrawn: swapAmount)
+            ],
+            signers: [buyerAddr], fee: 0, nonce: 1
+        )
+        let childBlock3 = try await BlockBuilder.buildBlock(
+            previous: childBlock2, transactions: [signTx(body: withdrawBody2, keypair: buyer)],
+            timestamp: t - 10_000, difficulty: UInt256(1000), fetcher: fetcher
+        )
+        let valid = try await childBlock3.validate(
+            nexusHash: UInt256(1000),
+            parentChainBlock: childGenesis,
+            chainPath: ["Nexus", "Child"],
+            fetcher: fetcher
+        )
+        XCTAssertFalse(valid, "Double withdrawal from same deposit should be rejected")
+    }
+
+}
+
 // MARK: - Full Cross-Chain Flow: Deposit → Receipt → Withdrawal
 
 @MainActor

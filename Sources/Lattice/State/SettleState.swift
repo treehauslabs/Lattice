@@ -60,6 +60,37 @@ public extension ReceiptStateHeader {
         return proven
     }
 
+    func proveAndDeleteCompletedReceipts(childWithdrawals: [String: [WithdrawalAction]], fetcher: Fetcher) async throws -> ReceiptStateHeader {
+        if childWithdrawals.isEmpty { return self }
+        var seenKeys = Set<String>()
+        var resolvePaths = [[String]: ResolutionStrategy]()
+        for (directory, actions) in childWithdrawals {
+            for wa in actions {
+                let key = ReceiptKey(withdrawalAction: wa, directory: directory).description
+                if !seenKeys.insert(key).inserted { throw StateErrors.conflictingActions }
+                resolvePaths[[key]] = .targeted
+            }
+        }
+        let resolved = try await resolve(paths: resolvePaths, fetcher: fetcher)
+        var proofs = [[String]: SparseMerkleProof]()
+        var transforms = [[String]: Transform]()
+        for (directory, actions) in childWithdrawals {
+            for wa in actions {
+                let key = ReceiptKey(withdrawalAction: wa, directory: directory).description
+                if let node = resolved.node, let _: HeaderImpl<PublicKey> = try? node.get(key: key) {
+                    proofs[[key]] = .deletion
+                    transforms[[key]] = .delete
+                }
+            }
+        }
+        if proofs.isEmpty { return self }
+        let proven = try await proof(paths: proofs, fetcher: fetcher)
+        guard let result = try proven.transform(transforms: transforms) else {
+            throw TransformErrors.transformFailed("receipt deletion transform returned nil")
+        }
+        return result
+    }
+
     func proveAndUpdateState(allReceiptActions: [ReceiptAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
         if allReceiptActions.isEmpty { return self }
         var proofs = [[String]: SparseMerkleProof]()
