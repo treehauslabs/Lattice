@@ -313,14 +313,24 @@ public extension Block {
 
     /// Extract withdrawal actions from embedded child blocks so the nexus can
     /// delete the corresponding receipts during state computation.
+    ///
+    /// Resolves only the childBlocks dictionary structure and each child block's
+    /// transactions — never the child block's other properties (especially
+    /// ``previousBlock``, which would chain through the entire block history).
     func extractChildWithdrawals(fetcher: Fetcher) async throws -> [String: [WithdrawalAction]] {
-        guard let childBlocksNode = try await childBlocks.resolveRecursive(fetcher: fetcher).node else {
-            return [:]
-        }
-        let entries = try childBlocksNode.allKeysAndValues()
+        // Resolve the header to get the MerkleDictionary node
+        let resolvedHeader = try await childBlocks.resolve(fetcher: fetcher)
+        guard let dict = resolvedHeader.node else { return [:] }
+        // Resolve the radix trie structure so entries are enumerable,
+        // but leave leaf values (VolumeImpl<Block>) unresolved
+        let resolvedDict = try await dict.resolveList(fetcher: fetcher)
+        let entries = try resolvedDict.allKeysAndValues()
         var result = [String: [WithdrawalAction]]()
-        for (directory, blockHeader) in entries {
-            guard let childBlock = blockHeader.node else { continue }
+        for (directory, blockVolume) in entries {
+            // Resolve just this child block node, not its properties
+            let resolvedVolume = try await blockVolume.resolve(fetcher: fetcher)
+            guard let childBlock = resolvedVolume.node else { continue }
+            // Resolve transactions recursively — safe because transactions don't form chains
             guard let txNode = try await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { continue }
             let txHeaders = try txNode.allKeysAndValues().values
             var withdrawals = [WithdrawalAction]()
