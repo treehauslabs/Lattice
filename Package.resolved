@@ -1,5 +1,5 @@
 {
-  "originHash" : "4fa373c104fa5d40f1fb8d6ce3c3f3a5f6bebc5e9e7aa95551d77ab98db12a3a",
+  "originHash" : "4373b477de2ceb58d495060b102c45ca0561a45c5ac2190287d620876660cafa",
   "pins" : [
     {
       "identity" : "arraytrie",
@@ -150,8 +150,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/treehauslabs/UInt256.git",
       "state" : {
-        "revision" : "beb054dea3e0d18b21cad07619907a9dad093d8e",
-        "version" : "1.0.0"
+        "revision" : "7d387beb657e5288d6b41891886f1800f2c4529e",
+        "version" : "1.1.0"
       }
     }
   ],

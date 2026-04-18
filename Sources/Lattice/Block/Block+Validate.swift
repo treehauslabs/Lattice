@@ -235,6 +235,11 @@ public extension Block {
         if !spec.isEpochBoundary(blockIndex: index) {
             return nextDifficulty == difficulty
         }
+        // Accept the minimum difficulty floor for chains recovering from a
+        // zero-difficulty bug (UInt256 division by 1 returned 0).
+        if difficulty == ChainSpec.minimumDifficulty && previousBlock.nextDifficulty < ChainSpec.minimumDifficulty {
+            return nextDifficulty == difficulty
+        }
         let expected: UInt256
         if ancestorTimestamps.count >= 2 {
             let windowTimestamps = [timestamp] + Array(ancestorTimestamps.prefix(Int(spec.difficultyAdjustmentWindow)))
