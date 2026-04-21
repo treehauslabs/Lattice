@@ -169,6 +169,7 @@ public actor ChainState {
     var hashToBlock: [String: BlockMeta]
     var parentChainBlockHashToBlockHash: [String: String]
     var mainChainBlockAtIndex: [UInt64: String]
+    var blockTimestamps: [String: Int64]
     var bestChainCache: [String: CachedChainWork]
     var missingBlockHashes: Set<String>
     var retentionDepth: UInt64
@@ -186,6 +187,7 @@ public actor ChainState {
         hashToBlock: [String: BlockMeta],
         parentChainBlockHashToBlockHash: [String: String],
         retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE,
+        blockTimestamps: [String: Int64] = [:],
         tipSnapshot: TipBlockSnapshot? = nil
     ) {
         self.chainTip = chainTip
@@ -197,6 +199,7 @@ public actor ChainState {
         self.tipSnapshot = tipSnapshot
         self.bestChainCache = [:]
         self.missingBlockHashes = Set()
+        self.blockTimestamps = blockTimestamps
         var blockAtIndex: [UInt64: String] = [:]
         for hash in mainChainHashes {
             if let block = hashToBlock[hash] {
@@ -209,6 +212,7 @@ public actor ChainState {
     public func resetFrom(_ persisted: PersistedChainState, retentionDepth: UInt64? = nil) {
         var newHashToBlock: [String: BlockMeta] = [:]
         var newIndexToBlockHash: [UInt64: Set<String>] = [:]
+        var newTimestamps: [String: Int64] = [:]
         for block in persisted.blocks {
             let difficulty = block.difficulty.flatMap { UInt256($0, radix: 16) } ?? UInt256.zero
             let meta = BlockMeta(
@@ -223,6 +227,9 @@ public actor ChainState {
             )
             newHashToBlock[block.blockHash] = meta
             newIndexToBlockHash[block.blockIndex, default: Set()].insert(block.blockHash)
+            if let ts = block.timestamp {
+                newTimestamps[block.blockHash] = ts
+            }
         }
         self.chainTip = persisted.chainTip
         self.mainChainHashes = Set(persisted.mainChainHashes)
@@ -232,6 +239,7 @@ public actor ChainState {
         self.retentionDepth = retentionDepth ?? self.retentionDepth
         self.bestChainCache = [:]
         self.missingBlockHashes = Set(persisted.missingBlockHashes)
+        self.blockTimestamps = newTimestamps
         var blockAtIndex: [UInt64: String] = [:]
         for hash in self.mainChainHashes {
             if let block = self.hashToBlock[hash] {
@@ -261,6 +269,7 @@ public actor ChainState {
             hashToBlock: [blockHash: meta],
             parentChainBlockHashToBlockHash: [:],
             retentionDepth: retentionDepth,
+            blockTimestamps: [blockHash: block.timestamp],
             tipSnapshot: TipBlockSnapshot(
                 frontierCID: block.frontier.rawCID,
                 homesteadCID: block.homestead.rawCID,
@@ -306,6 +315,29 @@ public actor ChainState {
 
     public func getMainChainBlockHash(atIndex index: UInt64) -> String? {
         mainChainBlockAtIndex[index]
+    }
+
+    /// Return up to `count` ancestor timestamps newest-first, ending at `parentHash`.
+    /// Fast path: walks the main-chain side index via `mainChainBlockAtIndex` +
+    /// `blockTimestamps`, avoiding fetcher round-trips. Returns nil if `parentHash`
+    /// is not on the current main chain, or if any timestamp in the requested
+    /// window is missing (e.g. pre-upgrade persisted data) — callers should fall
+    /// back to a fetcher walk.
+    public func getMainChainTimestamps(forParentHash parentHash: String, count: UInt64) -> [Int64]? {
+        guard count > 0 else { return [] }
+        guard let parent = hashToBlock[parentHash] else { return nil }
+        guard mainChainBlockAtIndex[parent.blockIndex] == parentHash else { return nil }
+        var result: [Int64] = []
+        result.reserveCapacity(Int(count))
+        var idx = parent.blockIndex
+        for _ in 0..<count {
+            guard let hash = mainChainBlockAtIndex[idx] else { break }
+            guard let ts = blockTimestamps[hash] else { return nil }
+            result.append(ts)
+            if idx == 0 { break }
+            idx -= 1
+        }
+        return result
     }
 
     // MARK: - Block Submission
@@ -403,6 +435,7 @@ public actor ChainState {
         )
 
         hashToBlock[blockHash] = meta
+        blockTimestamps[blockHash] = block.timestamp
         missingBlockHashes.remove(blockHash)
 
         if let prevHash = block.previousBlock?.rawCID {
@@ -932,6 +965,7 @@ public actor ChainState {
         for hash in hashes {
             mainChainHashes.remove(hash)
             bestChainCache.removeValue(forKey: hash)
+            blockTimestamps.removeValue(forKey: hash)
             if let block = hashToBlock.removeValue(forKey: hash) {
                 for parentChainBlock in block.parentChainBlocks.keys {
                     parentChainBlockHashToBlockHash.removeValue(forKey: parentChainBlock)

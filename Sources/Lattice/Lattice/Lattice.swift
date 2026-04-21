@@ -18,38 +18,92 @@ public actor Lattice {
     }
 
     public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
-        if await nexus.chain.contains(blockHash: blockHeader.rawCID) { return false }
-        
-        guard let resolvedBlock = try? await blockHeader.resolve(fetcher: fetcher).node else { return false }
-        guard let validated = try? await resolvedBlock.validateNexus(fetcher: fetcher) else { return false }
-        if !validated { return false }
+        let tag = String(blockHeader.rawCID.prefix(16))
+        let tTotal = ContinuousClock.now
+
+        let tContains = ContinuousClock.now
+        if await nexus.chain.contains(blockHash: blockHeader.rawCID) {
+            print("[TIMING] processBlockHeader \(tag)… duplicate contains=\(ContinuousClock.now - tContains)")
+            return false
+        }
+        let dContains = ContinuousClock.now - tContains
+
+        let tResolve = ContinuousClock.now
+        guard let resolvedBlock = try? await blockHeader.resolve(fetcher: fetcher).node else {
+            print("[TIMING] processBlockHeader \(tag)… FAIL resolve contains=\(dContains) resolve=\(ContinuousClock.now - tResolve)")
+            return false
+        }
+        let dResolve = ContinuousClock.now - tResolve
+
+        let tValidate = ContinuousClock.now
+        let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
+        let dValidate = ContinuousClock.now - tValidate
+        if !validated {
+            print("[TIMING] processBlockHeader \(tag)… FAIL validateNexus contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate)")
+            return false
+        }
+
+        let tDiff = ContinuousClock.now
         let blockHash = resolvedBlock.getDifficultyHash()
-        if resolvedBlock.validateBlockDifficulty(nexusHash: blockHash) {
+        let meetsDifficulty = resolvedBlock.validateBlockDifficulty(nexusHash: blockHash)
+        let dDiff = ContinuousClock.now - tDiff
+
+        var dSubmit: Duration = .zero
+        var dReorg: Duration = .zero
+        var dExtract: Duration = .zero
+        var dNonChain: Duration = .zero
+        var dDiscover: Duration = .zero
+        var newChildCount = 0
+        var accepted = false
+        var path = "none"
+
+        if meetsDifficulty {
+            let tSubmit = ContinuousClock.now
             let result = await nexus.chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
                 blockHeader: blockHeader,
                 block: resolvedBlock
             )
+            dSubmit = ContinuousClock.now - tSubmit
+
             if let reorg = result.reorganization {
+                let tReorg = ContinuousClock.now
                 await nexus.propagateReorgToChildren(reorg: reorg)
+                dReorg = ContinuousClock.now - tReorg
             }
             if result.extendsMainChain || result.reorganization != nil {
+                path = "nexus"
+                let tExtract = ContinuousClock.now
                 let newChildren = await nexus.extractAndProcessChildBlocks(
                     parentBlock: resolvedBlock,
                     parentBlockHeader: blockHeader,
                     fetcher: fetcher
                 )
+                dExtract = ContinuousClock.now - tExtract
+                newChildCount = newChildren.count
+                let tDiscover = ContinuousClock.now
                 for dir in newChildren {
                     await delegate?.lattice(self, didDiscoverChildChain: dir)
                 }
-                return true
+                dDiscover = ContinuousClock.now - tDiscover
+                accepted = true
             }
         }
-        return await nexus.processNonChainBlockForChildren(
-            blockHash: blockHash,
-            block: resolvedBlock,
-            fetcher: fetcher
-        )
+
+        if !accepted {
+            path = "nonChain"
+            let tNonChain = ContinuousClock.now
+            accepted = await nexus.processNonChainBlockForChildren(
+                blockHash: blockHash,
+                block: resolvedBlock,
+                fetcher: fetcher
+            )
+            dNonChain = ContinuousClock.now - tNonChain
+        }
+
+        let dTotal = ContinuousClock.now - tTotal
+        print("[TIMING] processBlockHeader \(tag)… accepted=\(accepted) path=\(path) total=\(dTotal) contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate) difficulty=\(dDiff) submit=\(dSubmit) reorg=\(dReorg) extractChildBlocks=\(dExtract) discover=\(dDiscover) nonChain=\(dNonChain) newChildren=\(newChildCount)")
+        return accepted
     }
 }
 
@@ -165,8 +219,11 @@ public actor ChainLevel {
         chainPath: [String] = [],
         fetcher: Fetcher
     ) async -> Bool {
+        let tag = chainPath.last ?? "?"
+        let tTotal = ContinuousClock.now
         if parentBlock.timestamp != childBlock.timestamp { print("[VALIDATE] timestamp mismatch: parent=\(parentBlock.timestamp) child=\(childBlock.timestamp)"); return false }
 
+        let tPrev = ContinuousClock.now
         if let previousBlockHeader = childBlock.previousBlock {
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
                 print("[VALIDATE] could not resolve previousBlock CID=\(previousBlockHeader.rawCID)")
@@ -183,20 +240,29 @@ public actor ChainLevel {
             let emptyState = LatticeState.emptyHeader
             if childBlock.homestead.rawCID != emptyState.rawCID { print("[VALIDATE] homestead not empty for genesis child"); return false }
         }
+        let dPrev = ContinuousClock.now - tPrev
 
+        let tSpec = ContinuousClock.now
         guard let specNode = try? await childBlock.spec.resolve(fetcher: fetcher).node else { print("[VALIDATE] spec resolve failed"); return false }
+        let dSpec = ContinuousClock.now - tSpec
 
+        let tTxResolve = ContinuousClock.now
         guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { print("[VALIDATE] transactions resolve failed"); return false }
         guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { print("[VALIDATE] tx allKeysAndValues failed"); return false }
         let txHeaders = txKeysAndValues.values
         if txHeaders.contains(where: { $0.node == nil }) { print("[VALIDATE] unresolved tx header"); return false }
         let txs = txHeaders.map { $0.node! }
+        let dTxResolve = ContinuousClock.now - tTxResolve
 
+        let tState = ContinuousClock.now
         // Validate each transaction's signatures and authorization
         async let homesteadStateFuture = childBlock.homestead.resolve(fetcher: fetcher)
         async let parentStateFuture = childBlock.parentHomestead.resolve(fetcher: fetcher)
         guard let homesteadStateNode = try? await homesteadStateFuture.node else { print("[VALIDATE] homestead state resolve failed"); return false }
         guard let parentHomesteadStateNode = try? await parentStateFuture.node else { print("[VALIDATE] parentHomestead state resolve failed"); return false }
+        let dState = ContinuousClock.now - tState
+
+        let tTxValid = ContinuousClock.now
         for tx in txs {
             guard let valid = try? await tx.validateTransaction(
                 directory: specNode.directory,
@@ -206,11 +272,13 @@ public actor ChainLevel {
             ) else { print("[VALIDATE] tx.validateTransaction threw"); return false }
             if !valid { print("[VALIDATE] tx.validateTransaction returned false"); return false }
         }
+        let dTxValid = ContinuousClock.now - tTxValid
 
         let bodiesMaybe = txs.map { $0.body.node }
         if bodiesMaybe.contains(where: { $0 == nil }) { print("[VALIDATE] unresolved tx body"); return false }
         let bodies = bodiesMaybe.map { $0! }
 
+        let tFilters = ContinuousClock.now
         if !childBlock.validateChainPaths(transactionBodies: bodies, expectedPath: chainPath) { print("[VALIDATE] chainPaths failed, expected=\(chainPath)"); return false }
 
         if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { print("[VALIDATE] child spec filter failed"); return false }
@@ -225,11 +293,15 @@ public actor ChainLevel {
             if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: ancestorSpec) { print("[VALIDATE] ancestor spec filter failed for \(ancestorSpec.directory)"); return false }
             if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { print("[VALIDATE] ancestor spec action filter failed for \(ancestorSpec.directory)"); return false }
         }
+        let dFilters = ContinuousClock.now - tFilters
 
+        let tStructural = ContinuousClock.now
         if !childBlock.validateMaxTransactionCount(spec: specNode, transactionBodies: bodies) { print("[VALIDATE] maxTxCount failed"); return false }
         if (try? childBlock.validateStateDeltaSize(spec: specNode, transactionBodies: bodies)) != true { print("[VALIDATE] stateDeltaSize failed"); return false }
         if !childBlock.validateBlockSize(spec: specNode) { print("[VALIDATE] blockSize failed"); return false }
+        let dStructural = ContinuousClock.now - tStructural
 
+        let tBalance = ContinuousClock.now
         // Balance conservation
         let allAccountActions = bodies.flatMap { $0.accountActions }
         let allDepositActions = bodies.flatMap { $0.depositActions }
@@ -243,7 +315,9 @@ public actor ChainLevel {
             allAccountActions: allAccountActions,
             totalFees: totalFees
         )) != true { print("[VALIDATE] balance conservation failed"); return false }
+        let dBalance = ContinuousClock.now - tBalance
 
+        let tFrontier = ContinuousClock.now
         // Verify frontier state root: re-derive from homestead + transactions
         let frontierValid: Bool
         do {
@@ -255,7 +329,10 @@ public actor ChainLevel {
             return false
         }
         if !frontierValid { print("[VALIDATE] frontier state invalid"); return false }
+        let dFrontier = ContinuousClock.now - tFrontier
 
+        let dTotal = ContinuousClock.now - tTotal
+        print("[TIMING] validateChildBlock \(tag)#\(childBlock.index) txs=\(bodies.count) total=\(dTotal) prev=\(dPrev) spec=\(dSpec) txResolve=\(dTxResolve) state=\(dState) txValid=\(dTxValid) filters=\(dFilters) structural=\(dStructural) balance=\(dBalance) frontier=\(dFrontier)")
         return true
     }
 

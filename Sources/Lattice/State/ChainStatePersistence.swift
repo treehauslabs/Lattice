@@ -39,14 +39,16 @@ public struct PersistedBlockMeta: Codable, Sendable {
     public let parentChainBlocks: [String: UInt64?]
     public let childBlockHashes: [String]
     public let difficulty: String?
+    public let timestamp: Int64?
 
-    public init(blockHash: String, previousBlockHash: String?, blockIndex: UInt64, parentChainBlocks: [String: UInt64?], childBlockHashes: [String], difficulty: String? = nil) {
+    public init(blockHash: String, previousBlockHash: String?, blockIndex: UInt64, parentChainBlocks: [String: UInt64?], childBlockHashes: [String], difficulty: String? = nil, timestamp: Int64? = nil) {
         self.blockHash = blockHash
         self.previousBlockHash = previousBlockHash
         self.blockIndex = blockIndex
         self.parentChainBlocks = parentChainBlocks
         self.childBlockHashes = childBlockHashes
         self.difficulty = difficulty
+        self.timestamp = timestamp
     }
 }
 
@@ -65,7 +67,8 @@ public extension ChainState {
                 blockIndex: meta.blockIndex,
                 parentChainBlocks: meta.parentChainBlocks,
                 childBlockHashes: meta.childBlockHashes,
-                difficulty: diffHex
+                difficulty: diffHex,
+                timestamp: blockTimestamps[meta.blockHash]
             ))
         }
         return PersistedChainState(
@@ -90,6 +93,7 @@ public extension ChainState {
     ) -> ChainState {
         var hashToBlock: [String: BlockMeta] = [:]
         var indexToBlockHash: [UInt64: Set<String>] = [:]
+        var blockTimestamps: [String: Int64] = [:]
         for block in persisted.blocks {
             let difficulty = block.difficulty.flatMap { UInt256($0, radix: 16) } ?? UInt256.zero
             let meta = BlockMeta(
@@ -104,6 +108,9 @@ public extension ChainState {
             )
             hashToBlock[block.blockHash] = meta
             indexToBlockHash[block.blockIndex, default: Set()].insert(block.blockHash)
+            if let ts = block.timestamp {
+                blockTimestamps[block.blockHash] = ts
+            }
         }
         var snapshot: TipBlockSnapshot? = nil
         if let frontierCID = persisted.tipFrontierCID,
@@ -132,6 +139,7 @@ public extension ChainState {
             hashToBlock: hashToBlock,
             parentChainBlockHashToBlockHash: persisted.parentChainMap,
             retentionDepth: retentionDepth,
+            blockTimestamps: blockTimestamps,
             tipSnapshot: snapshot
         )
     }

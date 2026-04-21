@@ -78,34 +78,76 @@ public extension Block {
         return timestamps
     }
 
-    func validateNexus(fetcher: Fetcher) async throws -> Bool {
+    func validateNexus(fetcher: Fetcher, chain: ChainState? = nil) async throws -> Bool {
+        let tTotal = ContinuousClock.now
+        let tPrev = ContinuousClock.now
         guard let previousBlockNode = try await previousBlock?.resolve(fetcher: fetcher).node else { return false }
         if !validateSpec(previousBlock: previousBlockNode) { return false }
         if !validateState(previousBlock: previousBlockNode) { return false }
         if !validateIndex(previousBlock: previousBlockNode) { return false }
+        let dPrev = ContinuousClock.now - tPrev
+
+        let tSpec = ContinuousClock.now
         guard let specNode = try await spec.resolve(fetcher: fetcher).node else { return false }
-        let walkDepth = max(specNode.difficultyAdjustmentWindow, 11)
-        let ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
+        let dSpec = ContinuousClock.now - tSpec
+
+        let tAncestors = ContinuousClock.now
+        // Non-epoch blocks only need MTP (~11 timestamps); epoch boundaries need
+        // the full difficulty-adjustment window. This cuts 119/120 blocks' walk
+        // depth by ~10x before any caching.
+        let mtpDepth: UInt64 = 11
+        let walkDepth: UInt64 = specNode.isEpochBoundary(blockIndex: index)
+            ? max(specNode.difficultyAdjustmentWindow, mtpDepth)
+            : mtpDepth
+        let ancestorTimestamps: [Int64]
+        var fastPath = false
+        if let chain,
+           let parentHash = previousBlock?.rawCID,
+           let fast = await chain.getMainChainTimestamps(forParentHash: parentHash, count: walkDepth) {
+            ancestorTimestamps = fast
+            fastPath = true
+        } else {
+            ancestorTimestamps = await collectAncestorTimestamps(previousBlock: previousBlockNode, count: walkDepth, fetcher: fetcher)
+        }
         if !validateTimestamp(previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
         if !validateNextDifficulty(spec: specNode, previousBlock: previousBlockNode, ancestorTimestamps: ancestorTimestamps) { return false }
+        let dAncestors = ContinuousClock.now - tAncestors
+
+        let tTx = ContinuousClock.now
         guard let transactionBodies = try await resolveTransactionBodies(fetcher: fetcher, validator: { tx in
             try await tx.validateTransactionForNexus(fetcher: fetcher)
         }) else { return false }
+        let dTx = ContinuousClock.now - tTx
+
+        let tFilters = ContinuousClock.now
         if !TransactionBody.batchVerifyFilters(bodies: transactionBodies, spec: specNode) { return false }
         if !TransactionBody.batchVerifyActionFilters(bodies: transactionBodies, spec: specNode) { return false }
         if !validateMaxTransactionCount(spec: specNode, transactionBodies: transactionBodies) { return false }
         if try !validateStateDeltaSize(spec: specNode, transactionBodies: transactionBodies) { return false }
         if !validateBlockSize(spec: specNode) { return false }
         if !validateChainPaths(transactionBodies: transactionBodies, expectedPath: [specNode.directory]) { return false }
+        let dFilters = ContinuousClock.now - tFilters
+
+        let tBalance = ContinuousClock.now
         let allAccountActions = transactionBodies.flatMap { $0.accountActions }
         let (totalFees, feesOverflow) = Block.getTotalFees(transactionBodies)
         if feesOverflow { return false }
         // Nexus has no deposits or withdrawals — only receipts
         if try !validateBalanceChanges(spec: specNode, allDepositActions: [], allWithdrawalActions: [], allAccountActions: allAccountActions, totalFees: totalFees) { return false }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
+        let dBalance = ContinuousClock.now - tBalance
+
+        let tWithdrawals = ContinuousClock.now
         // Extract withdrawal actions from child blocks to prune completed receipts
         let childWithdrawals = try await extractChildWithdrawals(fetcher: fetcher)
+        let dWithdrawals = ContinuousClock.now - tWithdrawals
+
+        let tFrontier = ContinuousClock.now
         if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], childWithdrawals: childWithdrawals, fetcher: fetcher) { return false }
+        let dFrontier = ContinuousClock.now - tFrontier
+
+        let dTotal = ContinuousClock.now - tTotal
+        print("[TIMING] validateNexus #\(index) txs=\(transactionBodies.count) total=\(dTotal) prev=\(dPrev) spec=\(dSpec) ancestors=\(dAncestors) ancestorsFast=\(fastPath) ancestorsDepth=\(walkDepth) txResolve=\(dTx) filters=\(dFilters) balance=\(dBalance) childWithdrawals=\(dWithdrawals) frontier=\(dFrontier)")
         return true
     }
 
@@ -323,15 +365,25 @@ public extension Block {
     /// transactions — never the child block's other properties (especially
     /// ``previousBlock``, which would chain through the entire block history).
     func extractChildWithdrawals(fetcher: Fetcher) async throws -> [String: [WithdrawalAction]] {
+        let tTotal = ContinuousClock.now
         // Resolve the header to get the MerkleDictionary node
+        let tHeader = ContinuousClock.now
         let resolvedHeader = try await childBlocks.resolve(fetcher: fetcher)
-        guard let dict = resolvedHeader.node else { return [:] }
+        guard let dict = resolvedHeader.node else {
+            print("[TIMING] extractChildWithdrawals empty total=\(ContinuousClock.now - tTotal)")
+            return [:]
+        }
         // Resolve the radix trie structure so entries are enumerable,
         // but leave leaf values (VolumeImpl<Block>) unresolved
         let resolvedDict = try await dict.resolveList(fetcher: fetcher)
         let entries = try resolvedDict.allKeysAndValues()
+        let dHeader = ContinuousClock.now - tHeader
+
+        let tChildren = ContinuousClock.now
         var result = [String: [WithdrawalAction]]()
+        var childCount = 0
         for (directory, blockVolume) in entries {
+            childCount += 1
             // Resolve just this child block node, not its properties
             let resolvedVolume = try await blockVolume.resolve(fetcher: fetcher)
             guard let childBlock = resolvedVolume.node else { continue }
@@ -347,6 +399,10 @@ public extension Block {
                 result[directory] = withdrawals
             }
         }
+        let dChildren = ContinuousClock.now - tChildren
+
+        let dTotal = ContinuousClock.now - tTotal
+        print("[TIMING] extractChildWithdrawals children=\(childCount) withdrew=\(result.count) total=\(dTotal) header=\(dHeader) children=\(dChildren)")
         return result
     }
 }
