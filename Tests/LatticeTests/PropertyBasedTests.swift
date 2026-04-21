@@ -678,13 +678,13 @@ final class BlockStructurePropertyTests: XCTestCase {
         XCTAssertEqual(state1.rawCID, state2.rawCID)
     }
 
-    // Property: LatticeState has exactly 7 properties
+    // Property: LatticeState has exactly 6 properties
     func testLatticeStatePropertyCount() {
         let state = LatticeState.emptyState()
-        XCTAssertEqual(state.properties().count, 7)
+        XCTAssertEqual(state.properties().count, 6)
     }
 
-    // Property: All 7 sub-state property names are distinct
+    // Property: All 6 sub-state property names are distinct
     func testSubStatePropertyNamesDistinct() {
         let names = [
             ACCOUNT_STATE_PROPERTY,
@@ -693,9 +693,8 @@ final class BlockStructurePropertyTests: XCTestCase {
             PEER_STATE_PROPERTY,
             GENESIS_STATE_PROPERTY,
             RECEIPT_STATE_PROPERTY,
-            TRANSACTION_STATE_PROPERTY,
         ]
-        XCTAssertEqual(Set(names).count, 7)
+        XCTAssertEqual(Set(names).count, 6)
     }
 
     // Property: Block has exactly 7 addressable properties

@@ -619,8 +619,9 @@ final class NonceReplayTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        // Same nonce (0) but different body — should fail because TransactionState
-        // already has an entry for this (signer, nonce) pair
+        // Same nonce (0) but different body — should fail because the signer's
+        // nonce already advanced past 0; the new block's batch starts at 0 again,
+        // which violates the "nonce must be current+1" invariant.
         let body2 = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
@@ -633,9 +634,9 @@ final class NonceReplayTests: XCTestCase {
                 previous: block1, transactions: [tx(body2, kp)],
                 timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
             )
-            XCTFail("Reused nonce should fail — TransactionState already has this (signer, nonce)")
+            XCTFail("Reused nonce should fail — signer's nonce must advance monotonically")
         } catch {
-            // TransactionState insertion fails for duplicate key
+            // proveAndUpdateState throws nonceGap when first tx nonce != currentNonce + 1
         }
     }
 

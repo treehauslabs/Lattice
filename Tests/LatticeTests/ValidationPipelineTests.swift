@@ -302,9 +302,9 @@ final class TransactionNonceScopingTests: XCTestCase {
             receiptActions: [], withdrawalActions: [], signers: ["bob"], fee: 0, nonce: 42
         )
 
-        let key1 = TransactionStateHeader.transactionKey(body1)
-        let key2 = TransactionStateHeader.transactionKey(body2)
-        XCTAssertNotEqual(key1, key2, "Different signers with same nonce should produce different keys")
+        let key1 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body1))
+        let key2 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body2))
+        XCTAssertNotEqual(key1, key2, "Different signers should track nonces under distinct keys")
     }
 
     func testSameSignerSameNonceProducesSameKey() {
@@ -319,9 +319,9 @@ final class TransactionNonceScopingTests: XCTestCase {
             receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
 
-        let key1 = TransactionStateHeader.transactionKey(body1)
-        let key2 = TransactionStateHeader.transactionKey(body2)
-        XCTAssertEqual(key1, key2, "Same signer same nonce should collide (replay protection)")
+        let key1 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body1))
+        let key2 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body2))
+        XCTAssertEqual(key1, key2, "Same signer should share a nonce-tracking key")
     }
 
     func testMultipleSignersOrderIndependent() {
@@ -336,9 +336,9 @@ final class TransactionNonceScopingTests: XCTestCase {
             receiptActions: [], withdrawalActions: [], signers: ["bob", "alice"], fee: 0, nonce: 1
         )
 
-        let key1 = TransactionStateHeader.transactionKey(body1)
-        let key2 = TransactionStateHeader.transactionKey(body2)
-        XCTAssertEqual(key1, key2, "Signer order should not affect key")
+        let key1 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body1))
+        let key2 = AccountStateHeader.nonceTrackingKey(AccountStateHeader.signerPrefix(body2))
+        XCTAssertEqual(key1, key2, "Signer order should not affect prefix")
     }
 }
 

@@ -84,9 +84,10 @@ final class DoubleSpendTests: XCTestCase {
             actions: [], depositActions: [], genesisActions: [],
             peerActions: [], receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
-        let key1 = TransactionStateHeader.transactionKey(body1)
-        let key2 = TransactionStateHeader.transactionKey(body2)
-        XCTAssertEqual(key1, key2, "Same signer + nonce must collide for replay protection")
+        let prefix1 = AccountStateHeader.signerPrefix(body1)
+        let prefix2 = AccountStateHeader.signerPrefix(body2)
+        XCTAssertEqual(prefix1, prefix2, "Same signer must produce same nonce-tracking prefix")
+        XCTAssertEqual(body1.nonce, body2.nonce, "Replaying the same nonce must be detectable at state update time")
     }
 
     func testDifferentSignersSameNonceNotBlocked() {
@@ -101,9 +102,9 @@ final class DoubleSpendTests: XCTestCase {
             signers: ["bob"], fee: 0, nonce: 1
         )
         XCTAssertNotEqual(
-            TransactionStateHeader.transactionKey(body1),
-            TransactionStateHeader.transactionKey(body2),
-            "Different signers must not collide"
+            AccountStateHeader.signerPrefix(body1),
+            AccountStateHeader.signerPrefix(body2),
+            "Different signers must track nonces under distinct keys"
         )
     }
 }

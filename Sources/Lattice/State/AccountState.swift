@@ -5,10 +5,13 @@ public typealias AccountStateHeader = VolumeImpl<AccountState>
 
 public extension AccountStateHeader {
     /// Aggregate deltas per owner, resolve current balances, apply net changes.
-    /// Multiple actions on the same owner are summed — no conflictingActions.
-    func proveAndUpdateState(allAccountActions: [AccountAction], fetcher: Fetcher) async throws -> AccountStateHeader {
-        if allAccountActions.isEmpty { return self }
-
+    /// Also advances per-signer nonce tracking via `_nonce_<prefix>` keys in
+    /// the same trie (Ethereum-style per-account nonce).
+    func proveAndUpdateState(
+        allAccountActions: [AccountAction],
+        transactionBodies: [TransactionBody] = [],
+        fetcher: Fetcher
+    ) async throws -> AccountStateHeader {
         // Aggregate deltas per owner (preserve insertion order)
         var ownerOrder: [String] = []
         var netDeltas: [String: Int64] = [:]
@@ -20,22 +23,41 @@ public extension AccountStateHeader {
             guard !overflow else { throw StateErrors.balanceOverflow }
             netDeltas[action.owner] = sum
         }
-
-        // Remove zero-net-delta owners (no state change needed)
         ownerOrder.removeAll { netDeltas[$0] == 0 }
         for key in netDeltas.keys where netDeltas[key] == 0 {
             netDeltas.removeValue(forKey: key)
         }
-        if netDeltas.isEmpty { return self }
 
-        // Resolve targeted paths to read current balances
+        // Group transactions by signer prefix, validate contiguous within batch
+        var signerOrder: [String] = []
+        var groups: [String: [TransactionBody]] = [:]
+        for tx in transactionBodies {
+            let prefix = Self.signerPrefix(tx)
+            if groups[prefix] == nil { signerOrder.append(prefix) }
+            groups[prefix, default: []].append(tx)
+        }
+        for prefix in signerOrder {
+            groups[prefix]!.sort { $0.nonce < $1.nonce }
+            let sorted = groups[prefix]!
+            for i in 1..<sorted.count {
+                if sorted[i].nonce != sorted[i - 1].nonce + 1 {
+                    throw StateErrors.nonceGap
+                }
+            }
+        }
+
+        if netDeltas.isEmpty && signerOrder.isEmpty { return self }
+
+        // Resolve targeted paths to read current balances + current nonces
         var resolvePaths = [[String]: ResolutionStrategy]()
         for owner in ownerOrder {
             resolvePaths[[owner]] = .targeted
         }
+        for prefix in signerOrder {
+            resolvePaths[[Self.nonceTrackingKey(prefix)]] = .targeted
+        }
         let resolved = try await resolve(paths: resolvePaths, fetcher: fetcher)
 
-        // Compute new balances and determine proof types
         var proofs = [[String]: SparseMerkleProof]()
         var transforms = [[String]: Transform]()
 
@@ -64,7 +86,25 @@ public extension AccountStateHeader {
                 proofs[[owner]] = .mutation
                 transforms[[owner]] = .update(String(newBalance))
             }
-            // current == 0 && newBalance == 0 → no-op (net debit of zero on non-existent account)
+            // current == 0 && newBalance == 0 → no-op
+        }
+
+        for prefix in signerOrder {
+            let sorted = groups[prefix]!
+            let nonceKey = Self.nonceTrackingKey(prefix)
+            let currentNonce: UInt64? = resolved.node.flatMap { try? $0.get(key: nonceKey) }
+            let expectedFirst: UInt64 = (currentNonce ?? 0) + (currentNonce != nil ? 1 : 0)
+            guard sorted.first!.nonce == expectedFirst else {
+                throw StateErrors.nonceGap
+            }
+            let newNonce = sorted.last!.nonce
+            if currentNonce != nil {
+                proofs[[nonceKey]] = .mutation
+                transforms[[nonceKey]] = .update(String(newNonce))
+            } else {
+                proofs[[nonceKey]] = .insertion
+                transforms[[nonceKey]] = .insert(String(newNonce))
+            }
         }
 
         if proofs.isEmpty { return resolved }
@@ -74,5 +114,13 @@ public extension AccountStateHeader {
             throw TransformErrors.transformFailed("account state transform returned nil")
         }
         return result
+    }
+
+    static func signerPrefix(_ transaction: TransactionBody) -> String {
+        transaction.signers.sorted().joined(separator: ":")
+    }
+
+    static func nonceTrackingKey(_ prefix: String) -> String {
+        "_nonce_" + prefix
     }
 }
