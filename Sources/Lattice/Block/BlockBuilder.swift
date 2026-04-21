@@ -72,6 +72,7 @@ public struct BlockBuilder {
 
         let blockDifficulty = difficulty ?? previous.difficulty
         let blockNextDifficulty = nextDifficulty ?? previous.nextDifficulty
+        let previousCID = BlockHeader(node: previous).rawCID
 
         let transactionBodies = transactions.compactMap { $0.body.node }
         // Extract withdrawal actions from child blocks to prune completed receipts
@@ -97,7 +98,7 @@ public struct BlockBuilder {
 
         return Block(
             version: previous.version,
-            previousBlock: VolumeImpl<Block>(node: previous),
+            previousBlock: VolumeImpl<Block>(rawCID: previousCID),
             transactions: buildTransactionsDictionary(transactions),
             difficulty: blockDifficulty,
             nextDifficulty: blockNextDifficulty,
