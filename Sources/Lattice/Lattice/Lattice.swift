@@ -17,7 +17,7 @@ public actor Lattice {
         self.delegate = delegate
     }
 
-    public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher) async -> Bool {
+    public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher, skipValidation: Bool = false) async -> Bool {
         let tag = String(blockHeader.rawCID.prefix(16))
         let tTotal = ContinuousClock.now
 
@@ -35,17 +35,20 @@ public actor Lattice {
         }
         let dResolve = ContinuousClock.now - tResolve
 
-        let tValidate = ContinuousClock.now
-        let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
-        let dValidate = ContinuousClock.now - tValidate
-        if !validated {
-            print("[TIMING] processBlockHeader \(tag)… FAIL validateNexus contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate)")
-            return false
+        var dValidate: Duration = .zero
+        if !skipValidation {
+            let tValidate = ContinuousClock.now
+            let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
+            dValidate = ContinuousClock.now - tValidate
+            if !validated {
+                print("[TIMING] processBlockHeader \(tag)… FAIL validateNexus contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate)")
+                return false
+            }
         }
 
         let tDiff = ContinuousClock.now
         let blockHash = resolvedBlock.getDifficultyHash()
-        let meetsDifficulty = resolvedBlock.validateBlockDifficulty(nexusHash: blockHash)
+        let meetsDifficulty = skipValidation || resolvedBlock.validateBlockDifficulty(nexusHash: blockHash)
         let dDiff = ContinuousClock.now - tDiff
 
         var dSubmit: Duration = .zero
