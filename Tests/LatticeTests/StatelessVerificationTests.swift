@@ -25,7 +25,13 @@ private func sign(_ body: TransactionBody, _ kp: (privateKey: String, publicKey:
 }
 
 private func nextDiff(_ spec: ChainSpec, previous: Block, timestamp: Int64) -> UInt256 {
-    spec.calculateMinimumDifficulty(
+    // Post-epoch-aware difficulty: validation requires nextDifficulty == difficulty
+    // at non-epoch blocks, so only compute a new value at epoch boundaries.
+    let nextIndex = previous.index + 1
+    guard spec.isEpochBoundary(blockIndex: nextIndex) else {
+        return previous.difficulty
+    }
+    return spec.calculateMinimumDifficulty(
         previousDifficulty: previous.difficulty,
         blockTimestamp: timestamp,
         previousTimestamp: previous.timestamp

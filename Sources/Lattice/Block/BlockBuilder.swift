@@ -32,7 +32,7 @@ public struct BlockBuilder {
             fetcher: fetcher
         )
 
-        return Block(
+        let block = Block(
             version: version,
             previousBlock: nil,
             transactions: buildTransactionsDictionary(transactions),
@@ -47,6 +47,10 @@ public struct BlockBuilder {
             timestamp: timestamp,
             nonce: nonce
         )
+        if let storer = fetcher as? Storer {
+            try BlockHeader(node: block).storeRecursively(storer: storer)
+        }
+        return block
     }
 
     // MARK: - Build Next Block (extends a chain)
@@ -96,7 +100,7 @@ public struct BlockBuilder {
             fetcher: fetcher
         )
 
-        return Block(
+        let block = Block(
             version: previous.version,
             previousBlock: VolumeImpl<Block>(rawCID: previousCID),
             transactions: buildTransactionsDictionary(transactions),
@@ -111,6 +115,11 @@ public struct BlockBuilder {
             timestamp: timestamp,
             nonce: nonce
         )
+        if let storer = fetcher as? Storer {
+            try BlockHeader(node: previous).storeRecursively(storer: storer)
+            try BlockHeader(node: block).storeRecursively(storer: storer)
+        }
+        return block
     }
 
     // MARK: - Mining (find valid nonce)

@@ -1,4 +1,5 @@
 import Foundation
+import os
 @testable import Lattice
 import cashew
 
@@ -6,15 +7,19 @@ enum FetcherError: Error {
     case notFound(String)
 }
 
-actor StorableFetcher: Fetcher {
-    private var store: [String: Data] = [:]
+final class StorableFetcher: Fetcher, Storer, Sendable {
+    private let state = OSAllocatedUnfairLock<[String: Data]>(initialState: [:])
 
     func store(rawCid: String, data: Data) {
-        store[rawCid] = data
+        state.withLock { $0[rawCid] = data }
+    }
+
+    func contains(rawCid: String) -> Bool {
+        state.withLock { $0[rawCid] != nil }
     }
 
     func fetch(rawCid: String) async throws -> Data {
-        guard let data = store[rawCid] else {
+        guard let data = state.withLock({ $0[rawCid] }) else {
             throw FetcherError.notFound(rawCid)
         }
         return data
