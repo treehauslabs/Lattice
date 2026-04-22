@@ -5,6 +5,13 @@ public protocol LatticeDelegate: AnyObject, Sendable {
     func lattice(_ lattice: Lattice, didDiscoverChildChain directory: String) async
 }
 
+public struct ChildTreeResult: Sendable {
+    public let newlyDiscovered: [String]
+    public let anyAccepted: Bool
+
+    public static let empty = ChildTreeResult(newlyDiscovered: [], anyAccepted: false)
+}
+
 public actor Lattice {
     public let nexus: ChainLevel
     public weak var delegate: LatticeDelegate?
@@ -21,91 +28,55 @@ public actor Lattice {
         let tag = String(blockHeader.rawCID.prefix(16))
         let tTotal = ContinuousClock.now
 
-        let tContains = ContinuousClock.now
         if await nexus.chain.contains(blockHash: blockHeader.rawCID) {
-            print("[TIMING] processBlockHeader \(tag)… duplicate contains=\(ContinuousClock.now - tContains)")
             return false
         }
-        let dContains = ContinuousClock.now - tContains
 
-        let tResolve = ContinuousClock.now
         guard let resolvedBlock = try? await blockHeader.resolve(fetcher: fetcher).node else {
-            print("[TIMING] processBlockHeader \(tag)… FAIL resolve contains=\(dContains) resolve=\(ContinuousClock.now - tResolve)")
+            print("[LATTICE] processBlockHeader \(tag) FAIL resolve")
             return false
         }
-        let dResolve = ContinuousClock.now - tResolve
 
-        var dValidate: Duration = .zero
         if !skipValidation {
-            let tValidate = ContinuousClock.now
             let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
-            dValidate = ContinuousClock.now - tValidate
             if !validated {
-                print("[TIMING] processBlockHeader \(tag)… FAIL validateNexus contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate)")
+                print("[LATTICE] processBlockHeader \(tag) FAIL validateNexus")
                 return false
             }
         }
 
-        let tDiff = ContinuousClock.now
-        let blockHash = resolvedBlock.getDifficultyHash()
-        let meetsDifficulty = skipValidation || resolvedBlock.validateBlockDifficulty(nexusHash: blockHash)
-        let dDiff = ContinuousClock.now - tDiff
+        let nexusHash = resolvedBlock.getDifficultyHash()
+        let meetsNexusDifficulty = skipValidation || resolvedBlock.validateBlockDifficulty(nexusHash: nexusHash)
 
-        var dSubmit: Duration = .zero
-        var dReorg: Duration = .zero
-        var dExtract: Duration = .zero
-        var dNonChain: Duration = .zero
-        var dDiscover: Duration = .zero
-        var newChildCount = 0
-        var accepted = false
-        var path = "none"
-
-        if meetsDifficulty {
-            let tSubmit = ContinuousClock.now
+        var nexusAccepted = false
+        if meetsNexusDifficulty {
             let result = await nexus.chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
                 blockHeader: blockHeader,
                 block: resolvedBlock
             )
-            dSubmit = ContinuousClock.now - tSubmit
-
             if let reorg = result.reorganization {
-                let tReorg = ContinuousClock.now
                 await nexus.propagateReorgToChildren(reorg: reorg)
-                dReorg = ContinuousClock.now - tReorg
             }
-            if result.extendsMainChain || result.reorganization != nil {
-                path = "nexus"
-                let tExtract = ContinuousClock.now
-                let newChildren = await nexus.extractAndProcessChildBlocks(
-                    parentBlock: resolvedBlock,
-                    parentBlockHeader: blockHeader,
-                    fetcher: fetcher
-                )
-                dExtract = ContinuousClock.now - tExtract
-                newChildCount = newChildren.count
-                let tDiscover = ContinuousClock.now
-                for dir in newChildren {
-                    await delegate?.lattice(self, didDiscoverChildChain: dir)
-                }
-                dDiscover = ContinuousClock.now - tDiscover
-                accepted = true
-            }
+            nexusAccepted = result.extendsMainChain || result.reorganization != nil
         }
 
-        if !accepted {
-            path = "nonChain"
-            let tNonChain = ContinuousClock.now
-            accepted = await nexus.processNonChainBlockForChildren(
-                blockHash: blockHash,
-                block: resolvedBlock,
-                fetcher: fetcher
-            )
-            dNonChain = ContinuousClock.now - tNonChain
+        // Always walk the entire childBlocks tree: per the PoW-per-level rule,
+        // grandchildren may pass a level's difficulty even when the intermediate
+        // block (or the nexus itself) does not.
+        let treeResult = await nexus.acceptChildBlockTree(
+            parentBlock: resolvedBlock,
+            parentBlockHeader: blockHeader,
+            nexusHash: nexusHash,
+            fetcher: fetcher
+        )
+        for dir in treeResult.newlyDiscovered {
+            await delegate?.lattice(self, didDiscoverChildChain: dir)
         }
 
+        let accepted = nexusAccepted || treeResult.anyAccepted
         let dTotal = ContinuousClock.now - tTotal
-        print("[TIMING] processBlockHeader \(tag)… accepted=\(accepted) path=\(path) total=\(dTotal) contains=\(dContains) resolve=\(dResolve) validateNexus=\(dValidate) difficulty=\(dDiff) submit=\(dSubmit) reorg=\(dReorg) extractChildBlocks=\(dExtract) discover=\(dDiscover) nonChain=\(dNonChain) newChildren=\(newChildCount)")
+        print("[LATTICE] processBlockHeader \(tag) accepted=\(accepted) nexus=\(nexusAccepted) anyChild=\(treeResult.anyAccepted) newChildren=\(treeResult.newlyDiscovered.count) total=\(dTotal)")
         return accepted
     }
 }
@@ -137,49 +108,59 @@ public actor ChainLevel {
         Array(children.keys)
     }
 
-    // MARK: - Child Block Extraction (Merged Mining)
-
+    // MARK: - Child Block Tree Walk (Merged Mining)
+    //
+    // For each block in the childBlocks tree hanging off `parentBlock`:
+    //   1. Structurally validate the child.
+    //   2. If `childBlock.validateBlockDifficulty(nexusHash:)` passes, submit
+    //      to that child's chain.
+    //   3. ALWAYS recurse into the child's own childBlocks — a grandchild may
+    //      pass its level's target even when the intermediate child does not.
+    //
+    // Each accepted child is anchored to its direct parent level's chain via
+    // `(parentBlockHeader.rawCID, chain.highestBlockIndex)` for fork choice.
     @discardableResult
-    func extractAndProcessChildBlocks(
+    func acceptChildBlockTree(
         parentBlock: Block,
         parentBlockHeader: BlockHeader,
-        fetcher: Fetcher,
-        ancestorSpecs: [ChainSpec] = []
-    ) async -> [String] {
+        nexusHash: UInt256,
+        ancestorSpecs: [ChainSpec] = [],
+        fetcher: Fetcher
+    ) async -> ChildTreeResult {
         guard let childBlocksNode = try? await parentBlock.childBlocks.resolve(
             paths: [[""]: .list], fetcher: fetcher
-        ).node else { print("[LATTICE] childBlocks resolve failed"); return [] }
-        guard let allChildKeys = try? childBlocksNode.allKeys() else { print("[LATTICE] allKeys failed"); return [] }
-        if allChildKeys.isEmpty { return [] }
-        print("[LATTICE] extractAndProcessChildBlocks: keys=\(allChildKeys)")
+        ).node else { return .empty }
+        guard let allChildKeys = try? childBlocksNode.allKeys() else { return .empty }
+        if allChildKeys.isEmpty { return .empty }
 
-        let parentBlockIndex = await chain.getHighestBlockIndex()
+        let parentChainIndex = await chain.getHighestBlockIndex()
 
         var allAncestorSpecs = ancestorSpecs
         if let parentSpec = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
             allAncestorSpecs.append(parentSpec)
         }
 
-        var newChildDirectories: [String] = []
+        var newlyDiscovered: [String] = []
         for directory in allChildKeys {
             if children[directory] == nil {
-                print("[LATTICE] child '\(directory)' not yet subscribed, attempting auto-subscribe")
                 guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
                 if let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node,
                    childBlock.index == 0, childBlock.previousBlock == nil {
                     subscribe(to: directory, genesisBlock: childBlock)
-                    newChildDirectories.append(directory)
+                    newlyDiscovered.append(directory)
                 }
             }
         }
 
-        await withTaskGroup(of: Void.self) { group in
+        let subtreeResults = await withTaskGroup(of: ChildTreeResult.self, returning: ChildTreeResult.self) { group in
             for directory in allChildKeys {
-                guard let childLevel = children[directory] else { print("[LATTICE] no childLevel for '\(directory)'"); continue }
-                guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { print("[LATTICE] get(key:) failed for '\(directory)'"); continue }
+                guard let childLevel = children[directory] else { continue }
+                guard let childBlockHeader = try? childBlocksNode.get(key: directory) else { continue }
 
-                group.addTask { [parentBlockHeader, parentBlockIndex, allAncestorSpecs] in
-                    guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else { print("[LATTICE] child block resolve failed for '\(directory)'"); return }
+                group.addTask { [parentBlockHeader, parentChainIndex, allAncestorSpecs] in
+                    guard let childBlock = try? await childBlockHeader.resolve(fetcher: fetcher).node else {
+                        return .empty
+                    }
 
                     let childChainPath = allAncestorSpecs.map { $0.directory } + [directory]
                     let isValid = await childLevel.validateChildBlock(
@@ -189,28 +170,56 @@ public actor ChainLevel {
                         chainPath: childChainPath,
                         fetcher: fetcher
                     )
-                    if !isValid { print("[LATTICE] child block validation FAILED for '\(directory)' at index \(childBlock.index)"); return }
-                    print("[LATTICE] child block validated for '\(directory)' at index \(childBlock.index)")
-
-                    let result = await childLevel.chain.submitBlock(
-                        parentBlockHeaderAndIndex: (parentBlockHeader.rawCID, parentBlockIndex),
-                        blockHeader: childBlockHeader,
-                        block: childBlock
-                    )
-                    if let reorg = result.reorganization {
-                        await childLevel.propagateReorgToChildren(reorg: reorg)
+                    if !isValid {
+                        print("[LATTICE] child '\(directory)' FAIL structural validation")
+                        return .empty
                     }
 
-                    await childLevel.extractAndProcessChildBlocks(
+                    var localAccepted = false
+                    if childBlock.validateBlockDifficulty(nexusHash: nexusHash) {
+                        let result = await childLevel.chain.submitBlock(
+                            parentBlockHeaderAndIndex: (parentBlockHeader.rawCID, parentChainIndex),
+                            blockHeader: childBlockHeader,
+                            block: childBlock
+                        )
+                        if let reorg = result.reorganization {
+                            await childLevel.propagateReorgToChildren(reorg: reorg)
+                        }
+                        localAccepted = result.extendsMainChain || result.reorganization != nil
+                        if localAccepted {
+                            print("[LATTICE] child '\(directory)' #\(childBlock.index) ACCEPTED")
+                        }
+                    }
+
+                    let subResult = await childLevel.acceptChildBlockTree(
                         parentBlock: childBlock,
                         parentBlockHeader: childBlockHeader,
-                        fetcher: fetcher,
-                        ancestorSpecs: allAncestorSpecs
+                        nexusHash: nexusHash,
+                        ancestorSpecs: allAncestorSpecs,
+                        fetcher: fetcher
+                    )
+
+                    return ChildTreeResult(
+                        newlyDiscovered: subResult.newlyDiscovered,
+                        anyAccepted: localAccepted || subResult.anyAccepted
                     )
                 }
             }
+
+            var combined: ChildTreeResult = .empty
+            for await r in group {
+                combined = ChildTreeResult(
+                    newlyDiscovered: combined.newlyDiscovered + r.newlyDiscovered,
+                    anyAccepted: combined.anyAccepted || r.anyAccepted
+                )
+            }
+            return combined
         }
-        return newChildDirectories
+
+        return ChildTreeResult(
+            newlyDiscovered: newlyDiscovered + subtreeResults.newlyDiscovered,
+            anyAccepted: subtreeResults.anyAccepted
+        )
     }
 
     // MARK: - Child Block Validation
@@ -222,153 +231,115 @@ public actor ChainLevel {
         chainPath: [String] = [],
         fetcher: Fetcher
     ) async -> Bool {
-        let tag = chainPath.last ?? "?"
-        let tTotal = ContinuousClock.now
-        if parentBlock.timestamp != childBlock.timestamp { print("[VALIDATE] timestamp mismatch: parent=\(parentBlock.timestamp) child=\(childBlock.timestamp)"); return false }
+        if parentBlock.timestamp != childBlock.timestamp { return false }
 
-        let tPrev = ContinuousClock.now
         if let previousBlockHeader = childBlock.previousBlock {
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
-                print("[VALIDATE] could not resolve previousBlock CID=\(previousBlockHeader.rawCID)")
                 return false
             }
-            if previousBlock.spec.rawCID != childBlock.spec.rawCID { print("[VALIDATE] spec mismatch"); return false }
-            if previousBlock.frontier.rawCID != childBlock.homestead.rawCID { print("[VALIDATE] frontier/homestead mismatch"); return false }
-            if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { print("[VALIDATE] parentHomestead mismatch for non-genesis child"); return false }
-            if previousBlock.index + 1 != childBlock.index { print("[VALIDATE] index mismatch: prev=\(previousBlock.index) child=\(childBlock.index)"); return false }
-            if previousBlock.timestamp >= childBlock.timestamp { print("[VALIDATE] timestamp ordering: prev=\(previousBlock.timestamp) child=\(childBlock.timestamp)"); return false }
+            if previousBlock.spec.rawCID != childBlock.spec.rawCID { return false }
+            if previousBlock.frontier.rawCID != childBlock.homestead.rawCID { return false }
+            if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
+            if previousBlock.index + 1 != childBlock.index { return false }
+            if previousBlock.timestamp >= childBlock.timestamp { return false }
         } else {
-            if childBlock.index != 0 { print("[VALIDATE] non-zero index with no previousBlock"); return false }
-            if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { print("[VALIDATE] parentHomestead mismatch"); return false }
+            if childBlock.index != 0 { return false }
+            if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
             let emptyState = LatticeState.emptyHeader
-            if childBlock.homestead.rawCID != emptyState.rawCID { print("[VALIDATE] homestead not empty for genesis child"); return false }
+            if childBlock.homestead.rawCID != emptyState.rawCID { return false }
         }
-        let dPrev = ContinuousClock.now - tPrev
 
-        let tSpec = ContinuousClock.now
-        guard let specNode = try? await childBlock.spec.resolve(fetcher: fetcher).node else { print("[VALIDATE] spec resolve failed"); return false }
-        let dSpec = ContinuousClock.now - tSpec
+        guard let specNode = try? await childBlock.spec.resolve(fetcher: fetcher).node else { return false }
 
-        let tTxResolve = ContinuousClock.now
-        guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { print("[VALIDATE] transactions resolve failed"); return false }
-        guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { print("[VALIDATE] tx allKeysAndValues failed"); return false }
+        guard let transactionsNode = try? await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { return false }
+        guard let txKeysAndValues = try? transactionsNode.allKeysAndValues() else { return false }
         let txHeaders = txKeysAndValues.values
-        if txHeaders.contains(where: { $0.node == nil }) { print("[VALIDATE] unresolved tx header"); return false }
+        if txHeaders.contains(where: { $0.node == nil }) { return false }
         let txs = txHeaders.map { $0.node! }
-        let dTxResolve = ContinuousClock.now - tTxResolve
 
-        let tState = ContinuousClock.now
-        // Validate each transaction's signatures and authorization
         async let homesteadStateFuture = childBlock.homestead.resolve(fetcher: fetcher)
         async let parentStateFuture = childBlock.parentHomestead.resolve(fetcher: fetcher)
-        guard let homesteadStateNode = try? await homesteadStateFuture.node else { print("[VALIDATE] homestead state resolve failed"); return false }
-        guard let parentHomesteadStateNode = try? await parentStateFuture.node else { print("[VALIDATE] parentHomestead state resolve failed"); return false }
-        let dState = ContinuousClock.now - tState
+        guard let homesteadStateNode = try? await homesteadStateFuture.node else { return false }
+        guard let parentHomesteadStateNode = try? await parentStateFuture.node else { return false }
 
-        let tTxValid = ContinuousClock.now
         for tx in txs {
             guard let valid = try? await tx.validateTransaction(
                 directory: specNode.directory,
                 homestead: homesteadStateNode,
                 parentState: parentHomesteadStateNode,
                 fetcher: fetcher
-            ) else { print("[VALIDATE] tx.validateTransaction threw"); return false }
-            if !valid { print("[VALIDATE] tx.validateTransaction returned false"); return false }
+            ) else { return false }
+            if !valid { return false }
         }
-        let dTxValid = ContinuousClock.now - tTxValid
 
         let bodiesMaybe = txs.map { $0.body.node }
-        if bodiesMaybe.contains(where: { $0 == nil }) { print("[VALIDATE] unresolved tx body"); return false }
+        if bodiesMaybe.contains(where: { $0 == nil }) { return false }
         let bodies = bodiesMaybe.map { $0! }
 
-        let tFilters = ContinuousClock.now
-        if !childBlock.validateChainPaths(transactionBodies: bodies, expectedPath: chainPath) { print("[VALIDATE] chainPaths failed, expected=\(chainPath)"); return false }
+        if !childBlock.validateChainPaths(transactionBodies: bodies, expectedPath: chainPath) { return false }
 
-        if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { print("[VALIDATE] child spec filter failed"); return false }
-        if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: specNode) { print("[VALIDATE] child spec action filter failed"); return false }
+        if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: specNode) { return false }
+        if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: specNode) { return false }
 
         if let parentSpecNode = try? await parentBlock.spec.resolve(fetcher: fetcher).node {
-            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: parentSpecNode) { print("[VALIDATE] parent spec filter failed"); return false }
-            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: parentSpecNode) { print("[VALIDATE] parent spec action filter failed"); return false }
+            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: parentSpecNode) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: parentSpecNode) { return false }
         }
 
         for ancestorSpec in ancestorSpecs {
-            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: ancestorSpec) { print("[VALIDATE] ancestor spec filter failed for \(ancestorSpec.directory)"); return false }
-            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { print("[VALIDATE] ancestor spec action filter failed for \(ancestorSpec.directory)"); return false }
+            if !TransactionBody.batchVerifyFilters(bodies: bodies, spec: ancestorSpec) { return false }
+            if !TransactionBody.batchVerifyActionFilters(bodies: bodies, spec: ancestorSpec) { return false }
         }
-        let dFilters = ContinuousClock.now - tFilters
 
-        let tStructural = ContinuousClock.now
-        if !childBlock.validateMaxTransactionCount(spec: specNode, transactionBodies: bodies) { print("[VALIDATE] maxTxCount failed"); return false }
-        if (try? childBlock.validateStateDeltaSize(spec: specNode, transactionBodies: bodies)) != true { print("[VALIDATE] stateDeltaSize failed"); return false }
-        if !childBlock.validateBlockSize(spec: specNode) { print("[VALIDATE] blockSize failed"); return false }
-        let dStructural = ContinuousClock.now - tStructural
+        if !childBlock.validateMaxTransactionCount(spec: specNode, transactionBodies: bodies) { return false }
+        if (try? childBlock.validateStateDeltaSize(spec: specNode, transactionBodies: bodies)) != true { return false }
+        if !childBlock.validateBlockSize(spec: specNode) { return false }
 
-        let tBalance = ContinuousClock.now
-        // Balance conservation
         let allAccountActions = bodies.flatMap { $0.accountActions }
         let allDepositActions = bodies.flatMap { $0.depositActions }
         let allWithdrawalActions = bodies.flatMap { $0.withdrawalActions }
         let (totalFees, feesOverflow) = Block.getTotalFees(bodies)
-        if feesOverflow { print("[VALIDATE] fees overflow"); return false }
+        if feesOverflow { return false }
         if (try? childBlock.validateBalanceChanges(
             spec: specNode,
             allDepositActions: allDepositActions,
             allWithdrawalActions: allWithdrawalActions,
             allAccountActions: allAccountActions,
             totalFees: totalFees
-        )) != true { print("[VALIDATE] balance conservation failed"); return false }
-        let dBalance = ContinuousClock.now - tBalance
+        )) != true { return false }
 
-        let tFrontier = ContinuousClock.now
-        // Verify frontier state root: re-derive from homestead + transactions
         let frontierValid: Bool
         do {
             frontierValid = try await childBlock.validateFrontierState(
                 transactionBodies: bodies, fetcher: fetcher
             )
         } catch {
-            print("[VALIDATE] frontier state threw: \(error)")
             return false
         }
-        if !frontierValid { print("[VALIDATE] frontier state invalid"); return false }
-        let dFrontier = ContinuousClock.now - tFrontier
+        if !frontierValid { return false }
 
-        let dTotal = ContinuousClock.now - tTotal
-        print("[TIMING] validateChildBlock \(tag)#\(childBlock.index) txs=\(bodies.count) total=\(dTotal) prev=\(dPrev) spec=\(dSpec) txResolve=\(dTxResolve) state=\(dState) txValid=\(dTxValid) filters=\(dFilters) structural=\(dStructural) balance=\(dBalance) frontier=\(dFrontier)")
         return true
     }
 
-    // MARK: - Non-Chain Block Dispatch (Merged Mining)
-
-    func processNonChainBlockForChildren(
-        blockHash: UInt256,
-        block: Block,
-        fetcher: Fetcher
-    ) async -> Bool {
-        let childBlockHeader = BlockHeader(node: block)
-        let parentBlockIndex = await chain.getHighestBlockIndex()
-        let parentInfo = (childBlockHeader.rawCID, parentBlockIndex)
-
-        return await withTaskGroup(of: Bool.self) { group in
-            for (_, child) in children {
-                group.addTask { [parentInfo, childBlockHeader, block] in
-                    let result = await child.chain.submitBlock(
-                        parentBlockHeaderAndIndex: parentInfo,
-                        blockHeader: childBlockHeader,
-                        block: block
-                    )
-                    if let reorg = result.reorganization {
-                        await child.propagateReorgToChildren(reorg: reorg)
-                    }
-                    return result.extendsMainChain || result.reorganization != nil
-                }
-            }
-            for await success in group {
-                if success { return true }
-            }
-            return false
-        }
+    /// Legacy wrapper kept for tests that assert structural propagation
+    /// without any PoW consideration. Uses `nexusHash = 0`, which always
+    /// satisfies `difficulty >= nexusHash`, so every validated child is
+    /// submitted to its chain.
+    @discardableResult
+    func extractAndProcessChildBlocks(
+        parentBlock: Block,
+        parentBlockHeader: BlockHeader,
+        fetcher: Fetcher,
+        ancestorSpecs: [ChainSpec] = []
+    ) async -> [String] {
+        let result = await acceptChildBlockTree(
+            parentBlock: parentBlock,
+            parentBlockHeader: parentBlockHeader,
+            nexusHash: UInt256.zero,
+            ancestorSpecs: ancestorSpecs,
+            fetcher: fetcher
+        )
+        return result.newlyDiscovered
     }
 
     func propagateReorgToChildren(reorg: Reorganization) async {
