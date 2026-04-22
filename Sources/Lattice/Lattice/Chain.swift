@@ -856,6 +856,7 @@ public actor ChainState {
     }
 
     func setNewTip(block: BlockMeta) {
+        let oldHighest = highestBlockIndex
         let chain = chainWithMostWork(startingBlock: block)
         // Find the leaf node (tip) of this chain — the block whose children
         // are all outside the chain set.
@@ -869,6 +870,16 @@ public actor ChainState {
                 mainChainHashes.insert(hash)
                 if let b = hashToBlock[hash] {
                     mainChainBlockAtIndex[b.blockIndex] = hash
+                }
+            }
+        }
+        let newHighest = highestBlockIndex
+        if oldHighest > retentionDepth && newHighest > retentionDepth {
+            let oldCutoff = oldHighest - retentionDepth
+            let newCutoff = newHighest - retentionDepth
+            if newCutoff > oldCutoff {
+                for idx in oldCutoff..<newCutoff {
+                    pruneBlocksAtIndex(idx)
                 }
             }
         }
