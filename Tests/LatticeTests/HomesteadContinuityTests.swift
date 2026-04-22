@@ -269,12 +269,46 @@ final class HomesteadContinuityTests: XCTestCase {
         XCTAssertFalse(valid)
     }
 
-    func testNonGenesisParentHomesteadMismatchAllowed() async throws {
-        // The helper only checks the block's own previous.frontier → homestead
-        // continuity. A mismatch of parentHomestead to the actual parent chain
-        // block is a cross-chain concern; the tree walk doesn't care because
-        // grandchildren don't reference parentHomestead — they reference this
-        // block's homestead.
+    func testNonGenesisParentHomesteadIgnoredByHelper() async throws {
+        // The helper itself only covers previous.frontier → homestead continuity.
+        // The cross-chain parentHomestead check lives alongside the helper call
+        // in acceptChildBlockTree (see testDiffFailingChildWithForgedParentHomesteadRejected).
+        let childSpec = makeSpec("Payments")
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let fetcher = StorableFetcher()
+
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: childSpec, timestamp: now - 40_000, difficulty: difficulty, fetcher: fetcher
+        )
+
+        // parentHomestead is deliberately bogus; continuity is still correct.
+        let weirdChild = Block(
+            previousBlock: VolumeImpl<Block>(node: childGenesis),
+            transactions: BlockBuilder.buildTransactionsDictionary([]),
+            difficulty: difficulty,
+            nextDifficulty: difficulty,
+            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            parentHomestead: LatticeState.emptyHeader,
+            homestead: childGenesis.frontier,
+            frontier: childGenesis.frontier,
+            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
+            index: 1,
+            timestamp: now - 30_000,
+            nonce: 0
+        )
+        try await storeBlock(childGenesis, to: fetcher)
+        try await storeBlock(weirdChild, to: fetcher)
+
+        let valid = await ChainLevel.validateHomesteadContinuity(block: weirdChild, fetcher: fetcher)
+        XCTAssertTrue(valid)
+    }
+
+    // MARK: - Integration: acceptChildBlockTree catches forged parentHomestead on diff-fail path
+
+    /// Even though validateHomesteadContinuity is agnostic to parentHomestead,
+    /// acceptChildBlockTree adds an inline check so a structurally malformed
+    /// child block gets rejected before its subtree is walked.
+    func testDiffFailingChildWithForgedParentHomesteadRejected() async throws {
         let nexusSpec = makeSpec("Nexus")
         let childSpec = makeSpec("Payments")
         let kp = CryptoUtils.generateKeyPair()
@@ -302,28 +336,61 @@ final class HomesteadContinuityTests: XCTestCase {
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
         )
 
-        // Build with wrong parentHomestead (empty, not nexusBlock1.homestead)
-        // but correct previous.frontier → homestead continuity.
-        let weirdChild = Block(
+        // Child block with forged parentHomestead (empty, not nexusBlock1.homestead).
+        // Continuity IS correct. Use a tiny difficulty so the block fails PoW.
+        let tinyDifficulty = UInt256(1)
+        let forgedChild = Block(
             previousBlock: VolumeImpl<Block>(node: childGenesis),
             transactions: BlockBuilder.buildTransactionsDictionary([]),
-            difficulty: difficulty,
-            nextDifficulty: difficulty,
+            difficulty: tinyDifficulty,
+            nextDifficulty: tinyDifficulty,
             spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: LatticeState.emptyHeader, // wrong cross-chain reference
-            homestead: childGenesis.frontier, // continuity is correct
+            parentHomestead: LatticeState.emptyHeader, // FORGED
+            homestead: childGenesis.frontier,
             frontier: childGenesis.frontier,
             childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
             index: 1,
             timestamp: ts1,
             nonce: 0
         )
+
+        // Rebuild nexusBlock1 with this forged child in its childBlocks dict.
+        let parentWithForgedChild = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis,
+            transactions: [sign(TransactionBody(
+                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
+                actions: [], depositActions: [],
+                genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
+                peerActions: [], receiptActions: [], withdrawalActions: [],
+                signers: [ownerAddr], fee: 0, nonce: 0
+            ), kp)],
+            childBlocks: ["Payments": forgedChild],
+            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
+        )
+
         try await storeBlock(nexusGenesis, to: fetcher)
         try await storeBlock(nexusBlock1, to: fetcher)
+        try await storeBlock(parentWithForgedChild, to: fetcher)
         try await storeBlock(childGenesis, to: fetcher)
-        try await storeBlock(weirdChild, to: fetcher)
+        try await storeBlock(forgedChild, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: weirdChild, fetcher: fetcher)
-        XCTAssertTrue(valid, "Helper is deliberately agnostic to parentHomestead; that's a cross-chain concern not needed for tree-walk safety")
+        let childChain = ChainState.fromGenesis(block: childGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let childLevel = ChainLevel(chain: childChain, children: [:])
+        let nexusChain = ChainState.fromGenesis(block: nexusGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let nexusLevel = ChainLevel(chain: nexusChain, children: ["Payments": childLevel])
+
+        // nexusHash = UInt256.max guarantees the child's PoW cannot meet
+        // its target (any difficulty < max → diff-fail branch).
+        let result = await nexusLevel.acceptChildBlockTree(
+            parentBlock: parentWithForgedChild,
+            parentBlockHeader: VolumeImpl<Block>(node: parentWithForgedChild),
+            nexusHash: UInt256.max,
+            fetcher: fetcher
+        )
+        XCTAssertFalse(result.anyAccepted)
+
+        // Child chain should NOT have advanced past its genesis.
+        let childTip = await childLevel.chain.tipSnapshot
+        XCTAssertEqual(childTip?.index, 0, "Forged diff-fail child must not advance the child chain")
     }
 }

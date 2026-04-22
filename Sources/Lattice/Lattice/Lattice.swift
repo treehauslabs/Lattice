@@ -204,9 +204,13 @@ public actor ChainLevel {
                             print("[LATTICE] child '\(directory)' #\(childBlock.index) ACCEPTED")
                         }
                     } else {
-                        // Block won't join this chain; only verify its own homestead
-                        // continuity so grandchildren anchoring parentHomestead against
-                        // this block's homestead can trust it.
+                        // Block won't join this chain. Reject structurally malformed
+                        // cross-chain anchors, then verify homestead continuity so
+                        // grandchildren can trust this block's homestead.
+                        if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID {
+                            print("[LATTICE] child '\(directory)' FAIL parentHomestead mismatch")
+                            return .empty
+                        }
                         let valid = await ChainLevel.validateHomesteadContinuity(
                             block: childBlock,
                             fetcher: fetcher
