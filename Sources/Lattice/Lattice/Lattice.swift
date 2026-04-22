@@ -37,19 +37,20 @@ public actor Lattice {
             return false
         }
 
-        if !skipValidation {
-            let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
-            if !validated {
-                print("[LATTICE] processBlockHeader \(tag) FAIL validateNexus")
-                return false
-            }
-        }
-
         let nexusHash = resolvedBlock.getDifficultyHash()
         let meetsNexusDifficulty = skipValidation || resolvedBlock.validateBlockDifficulty(nexusHash: nexusHash)
 
         var nexusAccepted = false
         if meetsNexusDifficulty {
+            // Block can join the nexus chain — full validation (transactions,
+            // signatures, balance changes, frontier replay, etc.) is required.
+            if !skipValidation {
+                let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
+                if !validated {
+                    print("[LATTICE] processBlockHeader \(tag) FAIL validateNexus")
+                    return false
+                }
+            }
             let result = await nexus.chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
                 blockHeader: blockHeader,
@@ -59,6 +60,22 @@ public actor Lattice {
                 await nexus.propagateReorgToChildren(reorg: reorg)
             }
             nexusAccepted = result.extendsMainChain || result.reorganization != nil
+        } else if !skipValidation {
+            // Block won't enter the nexus chain, but its child blocks anchor
+            // against parentHomestead == this block's homestead. Withdrawals in
+            // those children would be honored against fabricated parent state
+            // unless we verify the parent homestead is the frontier of a real
+            // predecessor. Skip the rest of validateNexus — it's expensive and
+            // unnecessary when we're not extending the nexus chain.
+            guard let prevHeader = resolvedBlock.previousBlock,
+                  let prevBlock = try? await prevHeader.resolve(fetcher: fetcher).node else {
+                print("[LATTICE] processBlockHeader \(tag) FAIL resolve previous")
+                return false
+            }
+            if !resolvedBlock.validateState(previousBlock: prevBlock) {
+                print("[LATTICE] processBlockHeader \(tag) FAIL homestead continuity")
+                return false
+            }
         }
 
         // Always walk the entire childBlocks tree: per the PoW-per-level rule,
@@ -163,20 +180,20 @@ public actor ChainLevel {
                     }
 
                     let childChainPath = allAncestorSpecs.map { $0.directory } + [directory]
-                    let isValid = await childLevel.validateChildBlock(
-                        childBlock: childBlock,
-                        parentBlock: parentBlock,
-                        ancestorSpecs: allAncestorSpecs,
-                        chainPath: childChainPath,
-                        fetcher: fetcher
-                    )
-                    if !isValid {
-                        print("[LATTICE] child '\(directory)' FAIL structural validation")
-                        return .empty
-                    }
-
                     var localAccepted = false
                     if childBlock.validateBlockDifficulty(nexusHash: nexusHash) {
+                        // Block can join this child's chain — full validation required.
+                        let isValid = await childLevel.validateChildBlock(
+                            childBlock: childBlock,
+                            parentBlock: parentBlock,
+                            ancestorSpecs: allAncestorSpecs,
+                            chainPath: childChainPath,
+                            fetcher: fetcher
+                        )
+                        if !isValid {
+                            print("[LATTICE] child '\(directory)' FAIL structural validation")
+                            return .empty
+                        }
                         let result = await childLevel.chain.submitBlock(
                             parentBlockHeaderAndIndex: (parentBlockHeader.rawCID, parentChainIndex),
                             blockHeader: childBlockHeader,
@@ -188,6 +205,18 @@ public actor ChainLevel {
                         localAccepted = result.extendsMainChain || result.reorganization != nil
                         if localAccepted {
                             print("[LATTICE] child '\(directory)' #\(childBlock.index) ACCEPTED")
+                        }
+                    } else {
+                        // Block won't join this chain; only verify homestead/parentHomestead
+                        // linkage so grandchildren can trust this block as their parent.
+                        let valid = await ChainLevel.validateChildHomesteadLinkage(
+                            childBlock: childBlock,
+                            parentBlock: parentBlock,
+                            fetcher: fetcher
+                        )
+                        if !valid {
+                            print("[LATTICE] child '\(directory)' FAIL homestead linkage")
+                            return .empty
                         }
                     }
 
@@ -223,6 +252,29 @@ public actor ChainLevel {
     }
 
     // MARK: - Child Block Validation
+
+    /// Cheap linkage check used when a child block's PoW does not meet this
+    /// chain's difficulty target. Verifies only the structural anchors that
+    /// grandchildren rely on:
+    ///   * `parentHomestead == parentBlock.homestead`
+    ///   * For non-genesis: `previousBlock.frontier == homestead`
+    ///   * For genesis: `index == 0` and `homestead == emptyState`
+    /// Skips transactions, signatures, frontier replay, etc.
+    static func validateChildHomesteadLinkage(
+        childBlock: Block,
+        parentBlock: Block,
+        fetcher: Fetcher
+    ) async -> Bool {
+        if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
+        if let previousBlockHeader = childBlock.previousBlock {
+            guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
+                return false
+            }
+            return previousBlock.frontier.rawCID == childBlock.homestead.rawCID
+        }
+        if childBlock.index != 0 { return false }
+        return childBlock.homestead.rawCID == LatticeState.emptyHeader.rawCID
+    }
 
     func validateChildBlock(
         childBlock: Block,
