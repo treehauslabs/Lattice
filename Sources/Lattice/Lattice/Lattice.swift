@@ -62,17 +62,14 @@ public actor Lattice {
             nexusAccepted = result.extendsMainChain || result.reorganization != nil
         } else if !skipValidation {
             // Block won't enter the nexus chain, but its child blocks anchor
-            // against parentHomestead == this block's homestead. Withdrawals in
-            // those children would be honored against fabricated parent state
-            // unless we verify the parent homestead is the frontier of a real
-            // predecessor. Skip the rest of validateNexus — it's expensive and
-            // unnecessary when we're not extending the nexus chain.
-            guard let prevHeader = resolvedBlock.previousBlock,
-                  let prevBlock = try? await prevHeader.resolve(fetcher: fetcher).node else {
-                print("[LATTICE] processBlockHeader \(tag) FAIL resolve previous")
-                return false
-            }
-            if !resolvedBlock.validateState(previousBlock: prevBlock) {
+            // against this block's homestead. If the homestead is forged,
+            // grandchild withdrawals could reference fabricated state. Verify
+            // only homestead continuity (cheap) and skip the rest of
+            // validateNexus (expensive, unnecessary).
+            let valid = await ChainLevel.validateHomesteadContinuity(
+                block: resolvedBlock, fetcher: fetcher
+            )
+            if !valid {
                 print("[LATTICE] processBlockHeader \(tag) FAIL homestead continuity")
                 return false
             }
@@ -207,15 +204,15 @@ public actor ChainLevel {
                             print("[LATTICE] child '\(directory)' #\(childBlock.index) ACCEPTED")
                         }
                     } else {
-                        // Block won't join this chain; only verify homestead/parentHomestead
-                        // linkage so grandchildren can trust this block as their parent.
-                        let valid = await ChainLevel.validateChildHomesteadLinkage(
-                            childBlock: childBlock,
-                            parentBlock: parentBlock,
+                        // Block won't join this chain; only verify its own homestead
+                        // continuity so grandchildren anchoring parentHomestead against
+                        // this block's homestead can trust it.
+                        let valid = await ChainLevel.validateHomesteadContinuity(
+                            block: childBlock,
                             fetcher: fetcher
                         )
                         if !valid {
-                            print("[LATTICE] child '\(directory)' FAIL homestead linkage")
+                            print("[LATTICE] child '\(directory)' FAIL homestead continuity")
                             return .empty
                         }
                     }
@@ -253,27 +250,20 @@ public actor ChainLevel {
 
     // MARK: - Child Block Validation
 
-    /// Cheap linkage check used when a child block's PoW does not meet this
-    /// chain's difficulty target. Verifies only the structural anchors that
-    /// grandchildren rely on:
-    ///   * `parentHomestead == parentBlock.homestead`
-    ///   * For non-genesis: `previousBlock.frontier == homestead`
-    ///   * For genesis: `index == 0` and `homestead == emptyState`
-    /// Skips transactions, signatures, frontier replay, etc.
-    static func validateChildHomesteadLinkage(
-        childBlock: Block,
-        parentBlock: Block,
-        fetcher: Fetcher
-    ) async -> Bool {
-        if childBlock.parentHomestead.rawCID != parentBlock.homestead.rawCID { return false }
-        if let previousBlockHeader = childBlock.previousBlock {
+    /// Cheap continuity check used when a block's PoW does not meet its
+    /// chain's difficulty target. Verifies the block's own homestead is real
+    /// (came from its previous block's frontier) so grandchildren anchoring
+    /// `parentHomestead` against this homestead can trust it. Skips
+    /// transactions, signatures, cross-chain references, frontier replay.
+    static func validateHomesteadContinuity(block: Block, fetcher: Fetcher) async -> Bool {
+        if let previousBlockHeader = block.previousBlock {
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
                 return false
             }
-            return previousBlock.frontier.rawCID == childBlock.homestead.rawCID
+            return previousBlock.frontier.rawCID == block.homestead.rawCID
         }
-        if childBlock.index != 0 { return false }
-        return childBlock.homestead.rawCID == LatticeState.emptyHeader.rawCID
+        if block.index != 0 { return false }
+        return block.homestead.rawCID == LatticeState.emptyHeader.rawCID
     }
 
     func validateChildBlock(

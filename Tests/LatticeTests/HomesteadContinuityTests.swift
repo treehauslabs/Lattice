@@ -30,98 +30,45 @@ private func storeBlock(_ block: Block, to fetcher: StorableFetcher) async throw
     await storer.flush(to: fetcher)
 }
 
-/// Tests covering `ChainLevel.validateChildHomesteadLinkage`, the cheap check used
-/// when a block fails its chain's PoW target. A grandchild block's `parentHomestead`
-/// references this block's homestead; if we accepted a forged homestead just because
-/// PoW failed, withdrawals processed by grandchildren could reference fabricated
-/// state. The helper must catch all forgery shapes without running full validation.
+/// Tests covering `ChainLevel.validateHomesteadContinuity`, the cheap check
+/// used when a block fails its chain's PoW target. The only property that
+/// matters for tree-walk safety is that the block's own homestead is real
+/// (came from its previous block's frontier), so grandchildren anchoring
+/// `parentHomestead` against this homestead can trust it.
 @MainActor
-final class ChildHomesteadLinkageTests: XCTestCase {
+final class HomesteadContinuityTests: XCTestCase {
 
     // MARK: - Genesis (previousBlock == nil)
 
-    func testGenesisChildValidPasses() async throws {
-        let nexusSpec = makeSpec("Nexus")
+    func testGenesisValidPasses() async throws {
         let childSpec = makeSpec("Payments")
-        let kp = CryptoUtils.generateKeyPair()
-        let ownerAddr = addr(kp.publicKey)
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let fetcher = StorableFetcher()
 
-        let nexusGenesis = try await BlockBuilder.buildGenesis(
-            spec: nexusSpec, timestamp: now - 30_000, difficulty: difficulty, fetcher: fetcher
-        )
-
-        let ts1 = now - 20_000
-        let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 0
-            ), kp)],
-            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
-        )
-
-        let childGenesis = Block(
+        let genesis = Block(
             previousBlock: nil,
             transactions: BlockBuilder.buildTransactionsDictionary([]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
             spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: nexusBlock1.homestead,
+            parentHomestead: LatticeState.emptyHeader,
             homestead: LatticeState.emptyHeader,
             frontier: LatticeState.emptyHeader,
             childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
             index: 0,
-            timestamp: ts1,
+            timestamp: now,
             nonce: 0
         )
+        try await storeBlock(genesis, to: fetcher)
 
-        try await storeBlock(nexusGenesis, to: fetcher)
-        try await storeBlock(nexusBlock1, to: fetcher)
-        try await storeBlock(childGenesis, to: fetcher)
-
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: childGenesis, parentBlock: nexusBlock1, fetcher: fetcher
-        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: genesis, fetcher: fetcher)
         XCTAssertTrue(valid)
     }
 
-    func testGenesisChildForgedParentHomesteadRejected() async throws {
-        let nexusSpec = makeSpec("Nexus")
+    func testGenesisWithNonZeroIndexRejected() async throws {
         let childSpec = makeSpec("Payments")
-        let kp = CryptoUtils.generateKeyPair()
-        let ownerAddr = addr(kp.publicKey)
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let fetcher = StorableFetcher()
-
-        let nexusGenesis = try await BlockBuilder.buildGenesis(
-            spec: nexusSpec, timestamp: now - 40_000, difficulty: difficulty, fetcher: fetcher
-        )
-        let ts1 = now - 30_000
-        let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 0
-            ), kp)],
-            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
-        )
-        let ts2 = now - 20_000
-        let nexusBlock2 = try await BlockBuilder.buildBlock(
-            previous: nexusBlock1,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 1
-            ), kp)],
-            timestamp: ts2, difficulty: difficulty, fetcher: fetcher
-        )
 
         let forged = Block(
             previousBlock: nil,
@@ -129,75 +76,21 @@ final class ChildHomesteadLinkageTests: XCTestCase {
             difficulty: difficulty,
             nextDifficulty: difficulty,
             spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: nexusBlock1.homestead, // WRONG: should be nexusBlock2.homestead
-            homestead: LatticeState.emptyHeader,
-            frontier: LatticeState.emptyHeader,
-            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
-            index: 0,
-            timestamp: ts2,
-            nonce: 0
-        )
-
-        try await storeBlock(nexusGenesis, to: fetcher)
-        try await storeBlock(nexusBlock1, to: fetcher)
-        try await storeBlock(nexusBlock2, to: fetcher)
-        try await storeBlock(forged, to: fetcher)
-
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: forged, parentBlock: nexusBlock2, fetcher: fetcher
-        )
-        XCTAssertFalse(valid)
-    }
-
-    func testGenesisChildWithNonZeroIndexRejected() async throws {
-        let nexusSpec = makeSpec("Nexus")
-        let childSpec = makeSpec("Payments")
-        let kp = CryptoUtils.generateKeyPair()
-        let ownerAddr = addr(kp.publicKey)
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let fetcher = StorableFetcher()
-
-        let nexusGenesis = try await BlockBuilder.buildGenesis(
-            spec: nexusSpec, timestamp: now - 30_000, difficulty: difficulty, fetcher: fetcher
-        )
-        let ts1 = now - 20_000
-        let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 0
-            ), kp)],
-            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
-        )
-
-        let forged = Block(
-            previousBlock: nil,
-            transactions: BlockBuilder.buildTransactionsDictionary([]),
-            difficulty: difficulty,
-            nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: nexusBlock1.homestead,
+            parentHomestead: LatticeState.emptyHeader,
             homestead: LatticeState.emptyHeader,
             frontier: LatticeState.emptyHeader,
             childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
             index: 7, // WRONG: genesis must be index 0
-            timestamp: ts1,
+            timestamp: now,
             nonce: 0
         )
-
-        try await storeBlock(nexusGenesis, to: fetcher)
-        try await storeBlock(nexusBlock1, to: fetcher)
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: forged, parentBlock: nexusBlock1, fetcher: fetcher
-        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
-    func testGenesisChildWithNonEmptyHomesteadRejected() async throws {
+    func testGenesisWithNonEmptyHomesteadRejected() async throws {
         let nexusSpec = makeSpec("Nexus")
         let childSpec = makeSpec("Payments")
         let kp = CryptoUtils.generateKeyPair()
@@ -205,6 +98,7 @@ final class ChildHomesteadLinkageTests: XCTestCase {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let fetcher = StorableFetcher()
 
+        // Build a real non-empty state root to use as a fake homestead.
         let nexusGenesis = try await BlockBuilder.buildGenesis(
             spec: nexusSpec, timestamp: now - 30_000, difficulty: difficulty, fetcher: fetcher
         )
@@ -220,36 +114,31 @@ final class ChildHomesteadLinkageTests: XCTestCase {
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
         )
 
-        // Forged genesis: claims a non-empty homestead so withdrawals could reference
-        // any fabricated balance state.
         let forged = Block(
             previousBlock: nil,
             transactions: BlockBuilder.buildTransactionsDictionary([]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
             spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: nexusBlock1.homestead,
+            parentHomestead: LatticeState.emptyHeader,
             homestead: nexusBlock1.frontier, // WRONG: genesis must have empty homestead
             frontier: nexusBlock1.frontier,
             childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
             index: 0,
-            timestamp: ts1,
+            timestamp: now,
             nonce: 0
         )
-
         try await storeBlock(nexusGenesis, to: fetcher)
         try await storeBlock(nexusBlock1, to: fetcher)
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: forged, parentBlock: nexusBlock1, fetcher: fetcher
-        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
     // MARK: - Non-genesis (previousBlock != nil)
 
-    func testNonGenesisChildValidPasses() async throws {
+    func testNonGenesisValidPasses() async throws {
         let nexusSpec = makeSpec("Nexus")
         let childSpec = makeSpec("Payments")
         let kp = CryptoUtils.generateKeyPair()
@@ -295,13 +184,14 @@ final class ChildHomesteadLinkageTests: XCTestCase {
         try await storeBlock(childGenesis, to: fetcher)
         try await storeBlock(childBlock1, to: fetcher)
 
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: childBlock1, parentBlock: nexusBlock1, fetcher: fetcher
-        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: childBlock1, fetcher: fetcher)
         XCTAssertTrue(valid)
     }
 
-    func testNonGenesisChildForgedParentHomesteadRejected() async throws {
+    func testNonGenesisForgedHomesteadRejected() async throws {
+        // Block claims a homestead that doesn't match its previous block's
+        // frontier — the critical case, since grandchildren would anchor
+        // against this fabricated state.
         let nexusSpec = makeSpec("Nexus")
         let childSpec = makeSpec("Payments")
         let kp = CryptoUtils.generateKeyPair()
@@ -315,7 +205,6 @@ final class ChildHomesteadLinkageTests: XCTestCase {
         let nexusGenesis = try await BlockBuilder.buildGenesis(
             spec: nexusSpec, timestamp: now - 50_000, difficulty: difficulty, fetcher: fetcher
         )
-
         let ts1 = now - 40_000
         let nexusBlock1 = try await BlockBuilder.buildBlock(
             previous: nexusGenesis,
@@ -330,84 +219,6 @@ final class ChildHomesteadLinkageTests: XCTestCase {
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
         )
 
-        let ts2 = now - 30_000
-        let nexusBlock2 = try await BlockBuilder.buildBlock(
-            previous: nexusBlock1,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 1
-            ), kp)],
-            timestamp: ts2, difficulty: difficulty, fetcher: fetcher
-        )
-
-        // Tampered: parentHomestead points at the older nexus block.
-        let forged = Block(
-            previousBlock: VolumeImpl<Block>(node: childGenesis),
-            transactions: BlockBuilder.buildTransactionsDictionary([sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
-                actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 0
-            ), kp)]),
-            difficulty: difficulty,
-            nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
-            parentHomestead: nexusBlock1.homestead, // WRONG: should be nexusBlock2.homestead
-            homestead: childGenesis.frontier,
-            frontier: childGenesis.frontier,
-            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
-            index: 1,
-            timestamp: ts2,
-            nonce: 0
-        )
-
-        try await storeBlock(nexusGenesis, to: fetcher)
-        try await storeBlock(nexusBlock1, to: fetcher)
-        try await storeBlock(nexusBlock2, to: fetcher)
-        try await storeBlock(childGenesis, to: fetcher)
-        try await storeBlock(forged, to: fetcher)
-
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: forged, parentBlock: nexusBlock2, fetcher: fetcher
-        )
-        XCTAssertFalse(valid)
-    }
-
-    func testNonGenesisChildForgedHomesteadRejected() async throws {
-        // The child claims a homestead that doesn't match its previous block's
-        // frontier. Without this check, it could fabricate balance state for
-        // grandchild withdrawals to reference.
-        let nexusSpec = makeSpec("Nexus")
-        let childSpec = makeSpec("Payments")
-        let kp = CryptoUtils.generateKeyPair()
-        let ownerAddr = addr(kp.publicKey)
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let fetcher = StorableFetcher()
-
-        let childGenesis = try await BlockBuilder.buildGenesis(
-            spec: childSpec, timestamp: now - 50_000, difficulty: difficulty, fetcher: fetcher
-        )
-        let nexusGenesis = try await BlockBuilder.buildGenesis(
-            spec: nexusSpec, timestamp: now - 50_000, difficulty: difficulty, fetcher: fetcher
-        )
-
-        let ts1 = now - 40_000
-        let nexusBlock1 = try await BlockBuilder.buildBlock(
-            previous: nexusGenesis,
-            transactions: [sign(TransactionBody(
-                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
-                actions: [], depositActions: [],
-                genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
-                signers: [ownerAddr], fee: 0, nonce: 0
-            ), kp)],
-            childBlocks: ["Payments": childGenesis],
-            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
-        )
-
-        // Real previous child block we'll reference but lie about what its frontier is.
         let realChildBlock1 = try await BlockBuilder.buildBlock(
             previous: childGenesis,
             transactions: [sign(TransactionBody(
@@ -454,10 +265,65 @@ final class ChildHomesteadLinkageTests: XCTestCase {
         try await storeBlock(realChildBlock1, to: fetcher)
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateChildHomesteadLinkage(
-            childBlock: forged, parentBlock: nexusBlock2, fetcher: fetcher
-        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
+    func testNonGenesisParentHomesteadMismatchAllowed() async throws {
+        // The helper only checks the block's own previous.frontier → homestead
+        // continuity. A mismatch of parentHomestead to the actual parent chain
+        // block is a cross-chain concern; the tree walk doesn't care because
+        // grandchildren don't reference parentHomestead — they reference this
+        // block's homestead.
+        let nexusSpec = makeSpec("Nexus")
+        let childSpec = makeSpec("Payments")
+        let kp = CryptoUtils.generateKeyPair()
+        let ownerAddr = addr(kp.publicKey)
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let fetcher = StorableFetcher()
+
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: childSpec, timestamp: now - 40_000, difficulty: difficulty, fetcher: fetcher
+        )
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: now - 40_000, difficulty: difficulty, fetcher: fetcher
+        )
+        let ts1 = now - 30_000
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis,
+            transactions: [sign(TransactionBody(
+                accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
+                actions: [], depositActions: [],
+                genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
+                peerActions: [], receiptActions: [], withdrawalActions: [],
+                signers: [ownerAddr], fee: 0, nonce: 0
+            ), kp)],
+            childBlocks: ["Payments": childGenesis],
+            timestamp: ts1, difficulty: difficulty, fetcher: fetcher
+        )
+
+        // Build with wrong parentHomestead (empty, not nexusBlock1.homestead)
+        // but correct previous.frontier → homestead continuity.
+        let weirdChild = Block(
+            previousBlock: VolumeImpl<Block>(node: childGenesis),
+            transactions: BlockBuilder.buildTransactionsDictionary([]),
+            difficulty: difficulty,
+            nextDifficulty: difficulty,
+            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            parentHomestead: LatticeState.emptyHeader, // wrong cross-chain reference
+            homestead: childGenesis.frontier, // continuity is correct
+            frontier: childGenesis.frontier,
+            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
+            index: 1,
+            timestamp: ts1,
+            nonce: 0
+        )
+        try await storeBlock(nexusGenesis, to: fetcher)
+        try await storeBlock(nexusBlock1, to: fetcher)
+        try await storeBlock(childGenesis, to: fetcher)
+        try await storeBlock(weirdChild, to: fetcher)
+
+        let valid = await ChainLevel.validateHomesteadContinuity(block: weirdChild, fetcher: fetcher)
+        XCTAssertTrue(valid, "Helper is deliberately agnostic to parentHomestead; that's a cross-chain concern not needed for tree-walk safety")
+    }
 }
