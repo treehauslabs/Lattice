@@ -15,9 +15,9 @@ public struct ChainSpec: Scalar {
     // Ceiling on difficulty value (higher = easier). Requires ~65,536 hash
     // attempts minimum, preventing abandoned chains from being trivially mined.
     public static let maximumDifficulty: UInt256 = UInt256.max >> 16
-    // Floor on difficulty value (lower = harder). Prevents a zero difficulty
-    // from permanently halting the chain. Set equal to maximumDifficulty so
-    // a corrupted chain resets to the easiest allowed level and adjusts naturally.
+    // Zero-recovery fallback. If an adjustment round produces a zero target
+    // (e.g. from UInt256 division bottoming out), the chain would be unmineable;
+    // we reset to this value so the adjustment loop can recover naturally.
     public static let minimumDifficulty: UInt256 = UInt256.max >> 16
     public let difficultyAdjustmentWindow: UInt64
     public let transactionFilters: [String]
@@ -152,7 +152,8 @@ public extension ChainSpec {
             adjusted = previousDifficulty
         }
         let capped = min(adjusted, ChainSpec.maximumDifficulty)
-        return max(capped, ChainSpec.minimumDifficulty)
+        if capped == 0 { return ChainSpec.minimumDifficulty }
+        return capped
     }
 
     func calculateMinimumDifficulty(previousDifficulty: UInt256, blockTimestamp: Int64, previousTimestamp: Int64) -> UInt256 {
