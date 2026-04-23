@@ -67,7 +67,7 @@ public actor Lattice {
             // only homestead continuity (cheap) and skip the rest of
             // validateNexus (expensive, unnecessary).
             let valid = await ChainLevel.validateHomesteadContinuity(
-                block: resolvedBlock, fetcher: fetcher
+                block: resolvedBlock, chain: nexus.chain, fetcher: fetcher
             )
             if !valid {
                 print("[LATTICE] processBlockHeader \(tag) FAIL homestead continuity")
@@ -243,6 +243,7 @@ public actor ChainLevel {
                         }
                         let valid = await ChainLevel.validateHomesteadContinuity(
                             block: childBlock,
+                            chain: childLevel.chain,
                             fetcher: fetcher
                         )
                         if !valid {
@@ -289,8 +290,16 @@ public actor ChainLevel {
     /// (came from its previous block's frontier) so grandchildren anchoring
     /// `parentHomestead` against this homestead can trust it. Skips
     /// transactions, signatures, cross-chain references, frontier replay.
-    static func validateHomesteadContinuity(block: Block, fetcher: Fetcher) async -> Bool {
+    static func validateHomesteadContinuity(block: Block, chain: ChainState, fetcher: Fetcher) async -> Bool {
         if let previousBlockHeader = block.previousBlock {
+            // Require previousBlock to already be a validated block on this
+            // chain (main chain or side chain). Any hash in the chain has
+            // passed validateNexus/validateChildBlock, including frontier
+            // replay — so its frontier is a trusted state. Without this
+            // check, an attacker can fabricate a sequence of non-validated
+            // blocks linked only by frontier==homestead, producing a forged
+            // state that a grandchild withdrawal then redeems against.
+            guard await chain.contains(blockHash: previousBlockHeader.rawCID) else { return false }
             guard let previousBlock = try? await previousBlockHeader.resolve(fetcher: fetcher).node else {
                 return false
             }

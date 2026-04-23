@@ -61,7 +61,8 @@ final class HomesteadContinuityTests: XCTestCase {
         )
         try await storeBlock(genesis, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: genesis, fetcher: fetcher)
+        let chain = ChainState.fromGenesis(block: genesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: genesis, chain: chain, fetcher: fetcher)
         XCTAssertTrue(valid)
     }
 
@@ -86,7 +87,8 @@ final class HomesteadContinuityTests: XCTestCase {
         )
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
+        let chain = ChainState.fromGenesis(block: forged, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, chain: chain, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
@@ -132,7 +134,8 @@ final class HomesteadContinuityTests: XCTestCase {
         try await storeBlock(nexusBlock1, to: fetcher)
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
+        let chain = ChainState.fromGenesis(block: forged, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, chain: chain, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
@@ -184,7 +187,10 @@ final class HomesteadContinuityTests: XCTestCase {
         try await storeBlock(childGenesis, to: fetcher)
         try await storeBlock(childBlock1, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: childBlock1, fetcher: fetcher)
+        // Chain starts from childGenesis so the helper sees previousBlock as
+        // a known, already-validated block.
+        let chain = ChainState.fromGenesis(block: childGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: childBlock1, chain: chain, fetcher: fetcher)
         XCTAssertTrue(valid)
     }
 
@@ -265,7 +271,15 @@ final class HomesteadContinuityTests: XCTestCase {
         try await storeBlock(realChildBlock1, to: fetcher)
         try await storeBlock(forged, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, fetcher: fetcher)
+        // Submit realChildBlock1 so the chain-membership gate passes — we
+        // want to isolate rejection to the forged-homestead check.
+        let chain = ChainState.fromGenesis(block: childGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        _ = await chain.submitBlock(
+            parentBlockHeaderAndIndex: nil,
+            blockHeader: VolumeImpl<Block>(node: realChildBlock1),
+            block: realChildBlock1
+        )
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, chain: chain, fetcher: fetcher)
         XCTAssertFalse(valid)
     }
 
@@ -299,8 +313,75 @@ final class HomesteadContinuityTests: XCTestCase {
         try await storeBlock(childGenesis, to: fetcher)
         try await storeBlock(weirdChild, to: fetcher)
 
-        let valid = await ChainLevel.validateHomesteadContinuity(block: weirdChild, fetcher: fetcher)
+        let chain = ChainState.fromGenesis(block: childGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: weirdChild, chain: chain, fetcher: fetcher)
         XCTAssertTrue(valid)
+    }
+
+    // MARK: - Forged continuity chain (attack path)
+
+    /// Attack: forge a non-validated previous block with a fabricated frontier,
+    /// then claim continuity against it. Before the fix, the helper only
+    /// verified `previousBlock.frontier == block.homestead` with no proof
+    /// that `previousBlock` had ever passed validation — letting a grandchild
+    /// withdrawal redeem receipts against forged parent state. The fix
+    /// requires `previousBlock` be a block the chain has already accepted
+    /// (any hash in the chain's `hashToBlock`, which only fills via
+    /// `submitBlock` after full validation).
+    func testForgedPreviousBlockNotOnChainRejected() async throws {
+        let childSpec = makeSpec("Payments")
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let fetcher = StorableFetcher()
+
+        // Genesis that DOES live on the chain.
+        let childGenesis = try await BlockBuilder.buildGenesis(
+            spec: childSpec, timestamp: now - 40_000, difficulty: difficulty, fetcher: fetcher
+        )
+
+        // A fabricated "previous" block: never went through validation, its
+        // frontier is entirely attacker-chosen. Structurally it chains from
+        // childGenesis so index + timestamp look plausible.
+        let fabricatedFrontier = LatticeState.emptyHeader  // stand-in for forged state
+        let fabricatedPrev = Block(
+            previousBlock: VolumeImpl<Block>(node: childGenesis),
+            transactions: BlockBuilder.buildTransactionsDictionary([]),
+            difficulty: difficulty,
+            nextDifficulty: difficulty,
+            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            parentHomestead: LatticeState.emptyHeader,
+            homestead: childGenesis.frontier,
+            frontier: fabricatedFrontier,
+            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
+            index: 1,
+            timestamp: now - 30_000,
+            nonce: 0
+        )
+
+        // Attacker's block: links to fabricatedPrev with a matching homestead
+        // so the old one-hop check would have passed.
+        let forged = Block(
+            previousBlock: VolumeImpl<Block>(node: fabricatedPrev),
+            transactions: BlockBuilder.buildTransactionsDictionary([]),
+            difficulty: difficulty,
+            nextDifficulty: difficulty,
+            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            parentHomestead: LatticeState.emptyHeader,
+            homestead: fabricatedFrontier,
+            frontier: fabricatedFrontier,
+            childBlocks: BlockBuilder.buildChildBlocksDictionary([:]),
+            index: 2,
+            timestamp: now - 20_000,
+            nonce: 0
+        )
+        try await storeBlock(childGenesis, to: fetcher)
+        try await storeBlock(fabricatedPrev, to: fetcher)
+        try await storeBlock(forged, to: fetcher)
+
+        // Chain only contains childGenesis — fabricatedPrev was never
+        // validated, so it's absent from hashToBlock.
+        let chain = ChainState.fromGenesis(block: childGenesis, retentionDepth: RECENT_BLOCK_DISTANCE)
+        let valid = await ChainLevel.validateHomesteadContinuity(block: forged, chain: chain, fetcher: fetcher)
+        XCTAssertFalse(valid, "previousBlock not on chain must be rejected — this is the fix for the forged-continuity attack")
     }
 
     // MARK: - Integration: acceptChildBlockTree catches forged parentHomestead on diff-fail path
