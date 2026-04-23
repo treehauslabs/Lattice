@@ -122,6 +122,36 @@ public actor ChainLevel {
         Array(children.keys)
     }
 
+    /// DFS-walk this level and all descendants, returning the level whose
+    /// directory matches the target plus the chain path from the receiver
+    /// down to (and including) that level. `chainPath` is passed in by the
+    /// caller to anchor the path at the correct root (e.g. `[nexusDir]` when
+    /// starting from nexus).
+    public func findLevel(directory target: String, chainPath: [String]) async -> (level: ChainLevel, chainPath: [String])? {
+        if chainPath.last == target { return (self, chainPath) }
+        for (childDir, childLevel) in children {
+            if childDir == target {
+                return (childLevel, chainPath + [childDir])
+            }
+            if let hit = await childLevel.findLevel(directory: target, chainPath: chainPath + [childDir]) {
+                return hit
+            }
+        }
+        return nil
+    }
+
+    /// DFS walk collecting every descendant's directory and full chain path.
+    /// `chainPath` is the path to this receiver; callers pass e.g. `[nexusDir]`
+    /// to anchor paths at the nexus.
+    public func collectAllLevels(chainPath: [String]) async -> [(level: ChainLevel, chainPath: [String])] {
+        var result: [(level: ChainLevel, chainPath: [String])] = [(self, chainPath)]
+        for (childDir, childLevel) in children {
+            let sub = await childLevel.collectAllLevels(chainPath: chainPath + [childDir])
+            result.append(contentsOf: sub)
+        }
+        return result
+    }
+
     // MARK: - Child Block Tree Walk (Merged Mining)
     //
     // For each block in the childBlocks tree hanging off `parentBlock`:
