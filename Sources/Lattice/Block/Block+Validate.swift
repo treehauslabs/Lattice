@@ -137,17 +137,12 @@ public extension Block {
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return false }
         let dBalance = ContinuousClock.now - tBalance
 
-        let tWithdrawals = ContinuousClock.now
-        // Extract withdrawal actions from child blocks to prune completed receipts
-        let childWithdrawals = try await extractChildWithdrawals(fetcher: fetcher)
-        let dWithdrawals = ContinuousClock.now - tWithdrawals
-
         let tFrontier = ContinuousClock.now
-        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], childWithdrawals: childWithdrawals, fetcher: fetcher) { return false }
+        if try await !validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher) { return false }
         let dFrontier = ContinuousClock.now - tFrontier
 
         let dTotal = ContinuousClock.now - tTotal
-        print("[TIMING] validateNexus #\(index) txs=\(transactionBodies.count) total=\(dTotal) prev=\(dPrev) spec=\(dSpec) ancestors=\(dAncestors) ancestorsFast=\(fastPath) ancestorsDepth=\(walkDepth) txResolve=\(dTx) filters=\(dFilters) balance=\(dBalance) childWithdrawals=\(dWithdrawals) frontier=\(dFrontier)")
+        print("[TIMING] validateNexus #\(index) txs=\(transactionBodies.count) total=\(dTotal) prev=\(dPrev) spec=\(dSpec) ancestors=\(dAncestors) ancestorsFast=\(fastPath) ancestorsDepth=\(walkDepth) txResolve=\(dTx) filters=\(dFilters) balance=\(dBalance) frontier=\(dFrontier)")
         return true
     }
 
@@ -205,11 +200,11 @@ public extension Block {
         return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: transactionBodies.flatMap { $0.depositActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: transactionBodies.flatMap { $0.withdrawalActions }, fetcher: fetcher)
     }
 
-    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], childWithdrawals: [String: [WithdrawalAction]] = [:], fetcher: Fetcher) async throws -> Bool {
+    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> Bool {
         let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
         async let resolvedFrontier = frontier.resolve(fetcher: fetcher)
         guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
-        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, childWithdrawals: childWithdrawals, fetcher: fetcher)
+        async let updatedHomestead = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
         let (finalFrontier, finalUpdatedHomestead) = await (try resolvedFrontier, try updatedHomestead)
         guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
         return frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID
@@ -358,51 +353,4 @@ public extension Block {
         }.contains(false)
     }
 
-    /// Extract withdrawal actions from embedded child blocks so the nexus can
-    /// delete the corresponding receipts during state computation.
-    ///
-    /// Resolves only the childBlocks dictionary structure and each child block's
-    /// transactions — never the child block's other properties (especially
-    /// ``previousBlock``, which would chain through the entire block history).
-    func extractChildWithdrawals(fetcher: Fetcher) async throws -> [String: [WithdrawalAction]] {
-        let tTotal = ContinuousClock.now
-        // Resolve the header to get the MerkleDictionary node
-        let tHeader = ContinuousClock.now
-        let resolvedHeader = try await childBlocks.resolve(fetcher: fetcher)
-        guard let dict = resolvedHeader.node else {
-            print("[TIMING] extractChildWithdrawals empty total=\(ContinuousClock.now - tTotal)")
-            return [:]
-        }
-        // Resolve the radix trie structure so entries are enumerable,
-        // but leave leaf values (VolumeImpl<Block>) unresolved
-        let resolvedDict = try await dict.resolveList(fetcher: fetcher)
-        let entries = try resolvedDict.allKeysAndValues()
-        let dHeader = ContinuousClock.now - tHeader
-
-        let tChildren = ContinuousClock.now
-        var result = [String: [WithdrawalAction]]()
-        var childCount = 0
-        for (directory, blockVolume) in entries {
-            childCount += 1
-            // Resolve just this child block node, not its properties
-            let resolvedVolume = try await blockVolume.resolve(fetcher: fetcher)
-            guard let childBlock = resolvedVolume.node else { continue }
-            // Resolve transactions recursively — safe because transactions don't form chains
-            guard let txNode = try await childBlock.transactions.resolveRecursive(fetcher: fetcher).node else { continue }
-            let txHeaders = try txNode.allKeysAndValues().values
-            var withdrawals = [WithdrawalAction]()
-            for txHeader in txHeaders {
-                guard let tx = txHeader.node, let body = tx.body.node else { continue }
-                withdrawals.append(contentsOf: body.withdrawalActions)
-            }
-            if !withdrawals.isEmpty {
-                result[directory] = withdrawals
-            }
-        }
-        let dChildren = ContinuousClock.now - tChildren
-
-        let dTotal = ContinuousClock.now - tTotal
-        print("[TIMING] extractChildWithdrawals children=\(childCount) withdrew=\(result.count) total=\(dTotal) header=\(dHeader) children=\(dChildren)")
-        return result
-    }
 }
