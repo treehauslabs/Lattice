@@ -298,13 +298,18 @@ public extension Block {
         return previousBlock.index + 1 == index
     }
 
+    /// Bitcoin-style consensus rules:
+    ///   (1) timestamp strictly greater than previous block
+    ///   (2) timestamp ≤ now + 2h (bounded future drift — prevents warp
+    ///       attacks that forward-shift timestamps to halve difficulty)
+    ///   (3) timestamp > MedianTimePast(11) (prevents grinding by predating)
+    /// No lower-bound against wall-clock: old blocks must still validate for
+    /// cold sync, so we only gate the future side against clock drift.
     func validateTimestamp(previousBlock: Block, ancestorTimestamps: [Int64] = []) -> Bool {
         if previousBlock.timestamp >= timestamp { return false }
         let now = Int64(Date().timeIntervalSince1970 * 1000)
-        if timestamp > now { return false }
-        let maxDrift: Int64 = 2 * 60 * 60 * 1000
-        if now - timestamp > maxDrift { return false }
-        // Median-time-past: new blocks must have timestamp > median of recent ancestors
+        let maxFutureDrift: Int64 = 2 * 60 * 60 * 1000
+        if timestamp > now + maxFutureDrift { return false }
         if !ancestorTimestamps.isEmpty {
             let sorted = ancestorTimestamps.sorted()
             let medianIndex = (sorted.count - 1) / 2
