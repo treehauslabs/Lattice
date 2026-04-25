@@ -1,6 +1,6 @@
 import cashew
 
-public typealias AccountState = MerkleDictionaryImpl<UInt64>
+public typealias AccountState = VolumeMerkleDictionaryImpl<UInt64>
 public typealias AccountStateHeader = VolumeImpl<AccountState>
 
 public extension AccountStateHeader {

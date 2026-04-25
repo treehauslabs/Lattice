@@ -1,6 +1,6 @@
 import cashew
 
-public typealias GenesisState = MerkleDictionaryImpl<Block>
+public typealias GenesisState = VolumeMerkleDictionaryImpl<Block>
 public typealias GenesisStateHeader = VolumeImpl<GenesisState>
 
 public extension GenesisStateHeader {

@@ -27,7 +27,7 @@ public struct PeerValue: Scalar {
     }
 }
 
-public typealias PeerState = MerkleDictionaryImpl<PeerValue>
+public typealias PeerState = VolumeMerkleDictionaryImpl<PeerValue>
 public typealias PeerStateHeader = VolumeImpl<PeerState>
 
 public extension PeerStateHeader {

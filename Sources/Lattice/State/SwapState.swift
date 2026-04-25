@@ -39,7 +39,7 @@ public struct DepositKey: LosslessStringConvertible {
     }
 }
 
-public typealias DepositState = MerkleDictionaryImpl<UInt64>
+public typealias DepositState = VolumeMerkleDictionaryImpl<UInt64>
 public typealias DepositStateHeader = VolumeImpl<DepositState>
 
 public extension DepositStateHeader {

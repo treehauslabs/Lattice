@@ -38,7 +38,7 @@ public struct ReceiptKey: LosslessStringConvertible {
     }
 }
 
-public typealias ReceiptState = MerkleDictionaryImpl<HeaderImpl<PublicKey>>
+public typealias ReceiptState = VolumeMerkleDictionaryImpl<HeaderImpl<PublicKey>>
 public typealias ReceiptStateHeader = VolumeImpl<ReceiptState>
 
 public extension ReceiptStateHeader {

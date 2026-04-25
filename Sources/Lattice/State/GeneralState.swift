@@ -1,6 +1,6 @@
 import cashew
 
-public typealias GeneralState = MerkleDictionaryImpl<String>
+public typealias GeneralState = VolumeMerkleDictionaryImpl<String>
 public typealias GeneralStateHeader = VolumeImpl<GeneralState>
 
 public extension GeneralStateHeader {
