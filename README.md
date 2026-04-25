@@ -116,7 +116,9 @@ Every `ChainLevel` owns a `ChainState` actor that manages block metadata, fork t
 
 **Three-phase state model.** Each block carries `parentHomestead` (parent chain's state), `homestead` (confirmed state entering the block), and `frontier` (state after applying transactions). This is what makes trustless cross-chain verification possible without querying another chain at validation time.
 
-**Eight partitioned sub-states.** World state is split into eight independent Sparse Merkle Trees (accounts, general KV, swaps, settlements, peers, genesis blocks, transaction nonces, order locks). All eight are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
+**Six partitioned sub-states.** World state is split into six independent Sparse Merkle Trees (accounts, general KV, deposits, receipts, peers, genesis blocks). Account state also tracks per-signer nonces via `_nonce_<prefix>` keys in the same trie. All six are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
+
+**Ref-counted state diffs.** Every `proveAndUpdateState` returns a `StateDiff` — reference-counted maps of created and replaced CIDs. The diff is threaded through the entire validation pipeline (`validateFrontierState` → `validateNexus` → `processBlockHeader`) so the node layer can capture it without re-computing proofs. `diffCIDs(old:new:)` walks only materialized nodes on modified paths — O(log n) per modified key.
 
 **Actor-based concurrency.** The consensus layer maps directly onto Swift's actor model. Each chain is an isolated actor. Reorganizations propagate through the actor hierarchy without shared mutable state. Swift 6's strict sendability checking catches data races at compile time.
 
@@ -255,6 +257,9 @@ Sources/Lattice/
 - [x] Fast sync via state snapshots
 - [x] Header-first sync for light clients
 - [x] Formal protocol specification
+- [x] StateDiff with ref-counted created/replaced CID tracking
+- [x] Validation pipeline threads StateDiff from frontier through to processBlockHeader
+- [x] Per-signer nonce tracking merged into AccountState trie
 
 ### Next
 
