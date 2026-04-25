@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/treehauslabs/cashew.git",
       "state" : {
-        "revision" : "79f551c4723413779047e6167a23293619e14f81",
-        "version" : "1.7.0"
+        "revision" : "8a640b5af634de8c5660439106f359c2e88adff7",
+        "version" : "1.8.0"
       }
     },
     {
