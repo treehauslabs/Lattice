@@ -230,7 +230,7 @@ final class ReceiptStateTests: XCTestCase {
             amountDemanded: 100, directory: "Child"
         )
 
-        let updatedReceiptState = try await emptyState.receiptState.proveAndUpdateState(
+        let (updatedReceiptState, _) = try await emptyState.receiptState.proveAndUpdateState(
             allReceiptActions: [receiptAction], fetcher: fetcher
         )
 
@@ -323,7 +323,7 @@ final class WithdrawalValidationTests: XCTestCase {
 
         // First insert a deposit to withdraw from
         let depositAction = DepositAction(nonce: 1, demander: "alice", amountDemanded: 100, amountDeposited: 100)
-        let withDeposit = try await emptyState.depositState.proveAndUpdateState(
+        let (withDeposit, _) = try await emptyState.depositState.proveAndUpdateState(
             allDepositActions: [depositAction], fetcher: fetcher
         )
 
@@ -369,7 +369,7 @@ final class NexusActionRestrictionTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Nexus must reject transactions with deposit actions")
     }
 
@@ -398,7 +398,7 @@ final class NexusActionRestrictionTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Nexus must reject transactions with withdrawal actions")
     }
 
@@ -432,7 +432,7 @@ final class NexusActionRestrictionTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: now() - 10_000, difficulty: UInt256(1000), fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid, "Nexus should accept receipt actions")
     }
 }
@@ -495,7 +495,7 @@ final class AtomicSwapCycleTests: XCTestCase {
         XCTAssertEqual(buyerAfter, nexusReward - swapAmount,
                        "Buyer balance: block reward minus implicit receipt transfer")
 
-        let valid = try await nexusBlock.validateNexus(fetcher: fetcher)
+        let valid = try await nexusBlock.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid, "Nexus block with receipt should be valid")
     }
 
@@ -575,7 +575,7 @@ final class AtomicSwapCycleTests: XCTestCase {
             parentChainBlock: childGenesis,
             chainPath: ["Nexus", "Child"],
             fetcher: fetcher
-        )
+        ).0
         XCTAssertFalse(valid, "Double withdrawal from same deposit should be rejected")
     }
 
@@ -659,7 +659,7 @@ final class CrossChainFlowTests: XCTestCase {
             previous: nexusGenesis, transactions: [receiptTx],
             timestamp: t - 20_000, difficulty: UInt256(1000), fetcher: fetcher
         )
-        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nexusValid, "Nexus block with receipt should validate")
 
         // Verify receipt is in nexus state

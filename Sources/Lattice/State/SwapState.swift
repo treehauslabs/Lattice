@@ -52,8 +52,8 @@ public extension DepositStateHeader {
         return try await proof(paths: proofs, fetcher: fetcher)
     }
 
-    func proveAndDeleteForWithdrawals(allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> DepositStateHeader {
-        if allWithdrawalActions.isEmpty { return self }
+    func proveAndDeleteForWithdrawals(allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> (DepositStateHeader, StateDiff) {
+        if allWithdrawalActions.isEmpty { return (self, .empty) }
         var seenKeys = Set<String>()
         var resolvePaths = [[String]: ResolutionStrategy]()
         for wa in allWithdrawalActions {
@@ -77,16 +77,16 @@ public extension DepositStateHeader {
                 transforms[[key]] = .delete
             }
         }
-        if proofs.isEmpty { return self }
+        if proofs.isEmpty { return (self, .empty) }
         let proven = try await proof(paths: proofs, fetcher: fetcher)
         guard let result = try proven.transform(transforms: transforms) else {
             throw TransformErrors.transformFailed("deposit deletion transform returned nil")
         }
-        return result
+        return (result, diffCIDs(old: proven, new: result))
     }
 
-    func proveAndUpdateState(allDepositActions: [DepositAction], fetcher: Fetcher) async throws -> DepositStateHeader {
-        if allDepositActions.isEmpty { return self }
+    func proveAndUpdateState(allDepositActions: [DepositAction], fetcher: Fetcher) async throws -> (DepositStateHeader, StateDiff) {
+        if allDepositActions.isEmpty { return (self, .empty) }
         var proofs = [[String]: SparseMerkleProof]()
         for depositAction in allDepositActions {
             if depositAction.amountDeposited != depositAction.amountDemanded { throw StateErrors.conflictingActions }
@@ -102,6 +102,6 @@ public extension DepositStateHeader {
             transforms[[depositKey]] = .insert(String(depositAction.amountDeposited))
         }
         guard let transformResult = try proven.transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
-        return transformResult
+        return (transformResult, diffCIDs(old: proven, new: transformResult))
     }
 }

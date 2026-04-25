@@ -94,13 +94,13 @@ final class StatelessNexusVerificationTests: XCTestCase {
         }
 
         // Full validation — verifier has no prior state, only CAS data
-        let valid = try await blockNode.validateNexus(fetcher: verifierFetcher)
+        let valid = try await blockNode.validateNexus(fetcher: verifierFetcher).0
         XCTAssertTrue(valid, "Stateless verifier should validate nexus block from CAS data alone")
 
         // Independently verify frontier state derivation
         let frontierValid = try await blockNode.validateFrontierState(
             transactionBodies: [coinbaseBody], fetcher: verifierFetcher
-        )
+        ).0
         XCTAssertTrue(frontierValid, "Frontier should be re-derivable via lazy loading")
     }
 
@@ -180,7 +180,7 @@ final class StatelessNexusVerificationTests: XCTestCase {
             XCTFail("Could not resolve block 3 from CAS")
             return
         }
-        let valid = try await block3Node.validateNexus(fetcher: verifierFetcher)
+        let valid = try await block3Node.validateNexus(fetcher: verifierFetcher).0
         XCTAssertTrue(valid, "Block 3 should validate stateless — all state lazy-loaded from CAS")
     }
 }
@@ -337,7 +337,7 @@ final class TargetedResolutionTests: XCTestCase {
             return
         }
 
-        let valid = try await blockNode.validateNexus(fetcher: verifierFetcher)
+        let valid = try await blockNode.validateNexus(fetcher: verifierFetcher).0
         XCTAssertTrue(valid, "Block with many accounts should validate via targeted resolution")
     }
 }

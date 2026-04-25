@@ -31,8 +31,8 @@ public typealias PeerState = VolumeMerkleDictionaryImpl<PeerValue>
 public typealias PeerStateHeader = VolumeImpl<PeerState>
 
 public extension PeerStateHeader {
-    func proveAndUpdateState(allPeerActions: [PeerAction], fetcher: Fetcher) async throws -> PeerStateHeader {
-        if allPeerActions.isEmpty { return self }
+    func proveAndUpdateState(allPeerActions: [PeerAction], fetcher: Fetcher) async throws -> (PeerStateHeader, StateDiff) {
+        if allPeerActions.isEmpty { return (self, .empty) }
 
         var proofs = [[String]: SparseMerkleProof]()
         var transforms = [[String]: Transform]()
@@ -55,6 +55,6 @@ public extension PeerStateHeader {
         guard let result = try proven.transform(transforms: transforms) else {
             throw TransformErrors.transformFailed("peer state transform returned nil")
         }
-        return result
+        return (result, diffCIDs(old: proven, new: result))
     }
 }

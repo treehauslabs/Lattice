@@ -24,32 +24,32 @@ public actor Lattice {
         self.delegate = delegate
     }
 
-    public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher, skipValidation: Bool = false) async -> Bool {
+    public func processBlockHeader(_ blockHeader: BlockHeader, fetcher: Fetcher, skipValidation: Bool = false) async -> (Bool, StateDiff) {
         let tag = String(blockHeader.rawCID.prefix(16))
         let tTotal = ContinuousClock.now
 
         if await nexus.chain.contains(blockHash: blockHeader.rawCID) {
-            return false
+            return (false, .empty)
         }
 
         guard let resolvedBlock = try? await blockHeader.resolve(fetcher: fetcher).node else {
             print("[LATTICE] processBlockHeader \(tag) FAIL resolve")
-            return false
+            return (false, .empty)
         }
 
         let nexusHash = resolvedBlock.getDifficultyHash()
         let meetsNexusDifficulty = skipValidation || resolvedBlock.validateBlockDifficulty(nexusHash: nexusHash)
 
         var nexusAccepted = false
+        var nexusDiff = StateDiff.empty
         if meetsNexusDifficulty {
-            // Block can join the nexus chain — full validation (transactions,
-            // signatures, balance changes, frontier replay, etc.) is required.
             if !skipValidation {
-                let validated = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? false
+                let (validated, diff) = (try? await resolvedBlock.validateNexus(fetcher: fetcher, chain: nexus.chain)) ?? (false, .empty)
                 if !validated {
                     print("[LATTICE] processBlockHeader \(tag) FAIL validateNexus")
-                    return false
+                    return (false, .empty)
                 }
+                nexusDiff = diff
             }
             let result = await nexus.chain.submitBlock(
                 parentBlockHeaderAndIndex: nil,
@@ -71,7 +71,7 @@ public actor Lattice {
             )
             if !valid {
                 print("[LATTICE] processBlockHeader \(tag) FAIL homestead continuity")
-                return false
+                return (false, .empty)
             }
         }
 
@@ -91,7 +91,7 @@ public actor Lattice {
         let accepted = nexusAccepted || treeResult.anyAccepted
         let dTotal = ContinuousClock.now - tTotal
         print("[LATTICE] processBlockHeader \(tag) accepted=\(accepted) nexus=\(nexusAccepted) anyChild=\(treeResult.anyAccepted) newChildren=\(treeResult.newlyDiscovered.count) total=\(dTotal)")
-        return accepted
+        return (accepted, nexusDiff)
     }
 }
 
@@ -395,7 +395,7 @@ public actor ChainLevel {
 
         let frontierValid: Bool
         do {
-            frontierValid = try await childBlock.validateFrontierState(
+            (frontierValid, _) = try await childBlock.validateFrontierState(
                 transactionBodies: bodies, fetcher: fetcher
             )
         } catch {

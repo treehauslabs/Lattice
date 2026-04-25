@@ -176,7 +176,7 @@ final class SignatureSecurityTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 
@@ -207,7 +207,7 @@ final class SignatureSecurityTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 
@@ -233,7 +233,7 @@ final class SignatureSecurityTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 
@@ -265,7 +265,7 @@ final class SignatureSecurityTests: XCTestCase {
             previous: genesis, transactions: [tx],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 }
@@ -297,7 +297,7 @@ final class BalanceOverflowTests: XCTestCase {
             previous: genesis, transactions: [sign(body, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let v = try await block.validateNexus(fetcher: fetcher)
+        let v = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(v)
     }
 
@@ -319,7 +319,7 @@ final class BalanceOverflowTests: XCTestCase {
             spec: s, transactions: [sign(body, kp)],
             timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
         )
-        let gv = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus")
+        let gv = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus").0
         XCTAssertFalse(gv)
     }
 
@@ -442,7 +442,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
                 previous: prev, transactions: [sign(body, miner)],
                 timestamp: base + Int64(i + 1) * 1000, difficulty: UInt256(1000), nonce: UInt64(i + 1), fetcher: fetcher
             )
-            let valid = try await block.validateNexus(fetcher: fetcher)
+            let valid = try await block.validateNexus(fetcher: fetcher).0
             XCTAssertTrue(valid, "Block \(i) should be valid")
             totalMined += reward
             minerBalance = newBalance
@@ -481,7 +481,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
             previous: genesis, transactions: [sign(body, payer)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
 
         let balanceAfterPayer = premine - fee
@@ -738,7 +738,7 @@ final class BlockLimitTests: XCTestCase {
             previous: genesis, transactions: txs,
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Should reject block exceeding max transaction count")
     }
 
@@ -774,7 +774,7 @@ final class BlockLimitTests: XCTestCase {
             spec: tinySpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
         )
 
-        let valid = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus")
+        let valid = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus").0
         XCTAssertFalse(valid, "Genesis block should exceed 100 byte limit")
     }
 
@@ -818,7 +818,7 @@ final class TimestampSecurityTests: XCTestCase {
             previous: genesis, timestamp: t() + 60_000,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await slightlyFuture.validateNexus(fetcher: fetcher)
+        let valid = try await slightlyFuture.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid, "60s future drift must be accepted")
     }
 
@@ -837,7 +837,7 @@ final class TimestampSecurityTests: XCTestCase {
             previous: genesis, timestamp: t() + 3 * 60 * 60 * 1000,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await farFuture.validateNexus(fetcher: fetcher)
+        let valid = try await farFuture.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "timestamp 3h in future must be rejected")
     }
 
@@ -856,7 +856,7 @@ final class TimestampSecurityTests: XCTestCase {
             previous: genesis, timestamp: base + 1_000,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await nextOld.validateNexus(fetcher: fetcher)
+        let valid = try await nextOld.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid, "blocks >2h old must still validate for sync")
     }
 
@@ -921,14 +921,14 @@ final class TimestampSecurityTests: XCTestCase {
             previous: genesis, timestamp: base,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let v1 = try await sameTime.validateNexus(fetcher: fetcher)
+        let v1 = try await sameTime.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(v1)
 
         let earlier = try await BlockBuilder.buildBlock(
             previous: genesis, timestamp: base - 1,
             difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let v2 = try await earlier.validateNexus(fetcher: fetcher)
+        let v2 = try await earlier.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(v2)
     }
 }

@@ -126,7 +126,7 @@ final class DoubleClaimTests: XCTestCase {
                 nexusHash: childBlock3.getDifficultyHash(),
                 parentChainBlock: nexusBlock1,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Second claim of same swap should fail — DepositState key already deleted")
         } catch {
         }
@@ -169,7 +169,7 @@ final class PhantomSettleTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(settleBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let nv = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let nv = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nv, "Settle is accepted on nexus — nexus doesn't cross-verify swaps")
 
         let claimBody = TransactionBody(
@@ -196,7 +196,7 @@ final class PhantomSettleTests: XCTestCase {
                 nexusHash: badBlock.getDifficultyHash(),
                 parentChainBlock: nexusBlock1,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Claim referencing phantom swap should fail validation")
         } catch {
             // Deletion proof throws on non-existent swap — phantom swap correctly rejected
@@ -279,7 +279,7 @@ final class CrossChainReplayTests: XCTestCase {
                 nexusHash: replayBlock.getDifficultyHash(),
                 parentChainBlock: nexusBlock1,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Claim on child B using child A swap should fail — no swap exists on B")
         } catch {
             // Deletion proof throws on non-existent swap key in child B's depositState
@@ -429,7 +429,7 @@ final class TransactionFilterBlockTests: XCTestCase {
             previous: genesis, transactions: [tx(lowFeeBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let lowFeeValid = try await lowFeeBlock.validateNexus(fetcher: fetcher)
+        let lowFeeValid = try await lowFeeBlock.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(lowFeeValid, "Block with fee below filter minimum should fail validation")
 
         // Block with fee=10 (meets filter)
@@ -443,7 +443,7 @@ final class TransactionFilterBlockTests: XCTestCase {
             previous: genesis, transactions: [tx(okFeeBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let okFeeValid = try await okFeeBlock.validateNexus(fetcher: fetcher)
+        let okFeeValid = try await okFeeBlock.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(okFeeValid, "Block with fee meeting filter should pass validation")
     }
 }
@@ -479,7 +479,7 @@ final class GeneralStateBlockTests: XCTestCase {
             previous: genesis, transactions: [tx(insertBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let v1 = try await block1.validateNexus(fetcher: fetcher)
+        let v1 = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v1)
         XCTAssertNotEqual(block1.frontier.rawCID, block1.homestead.rawCID)
 
@@ -495,7 +495,7 @@ final class GeneralStateBlockTests: XCTestCase {
             previous: block1, transactions: [tx(updateBody, kp)],
             timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let v2 = try await block2.validateNexus(fetcher: fetcher)
+        let v2 = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v2)
 
         // Block 3: Delete the key
@@ -510,7 +510,7 @@ final class GeneralStateBlockTests: XCTestCase {
             previous: block2, transactions: [tx(deleteBody, kp)],
             timestamp: base + 3000, difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
         )
-        let v3 = try await block3.validateNexus(fetcher: fetcher)
+        let v3 = try await block3.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v3)
     }
 
@@ -590,7 +590,7 @@ final class PeerStateBlockTests: XCTestCase {
             previous: genesis, transactions: [tx(insertBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let v1 = try await block1.validateNexus(fetcher: fetcher)
+        let v1 = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v1)
 
         // Block 2: Update the peer
@@ -605,7 +605,7 @@ final class PeerStateBlockTests: XCTestCase {
             previous: block1, transactions: [tx(updateBody, kp)],
             timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let v2 = try await block2.validateNexus(fetcher: fetcher)
+        let v2 = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v2)
 
         // Block 3: Delete the peer
@@ -620,7 +620,7 @@ final class PeerStateBlockTests: XCTestCase {
             previous: block2, transactions: [tx(deleteBody, kp)],
             timestamp: base + 3000, difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
         )
-        let v3 = try await block3.validateNexus(fetcher: fetcher)
+        let v3 = try await block3.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(v3)
     }
 }

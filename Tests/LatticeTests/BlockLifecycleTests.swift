@@ -81,7 +81,7 @@ final class BlockMintingTests: XCTestCase {
         XCTAssertEqual(genesis.homestead.rawCID, emptyState.rawCID)
         XCTAssertNotEqual(genesis.frontier.rawCID, genesis.homestead.rawCID)
 
-        let valid = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus")
+        let valid = try await genesis.validateGenesis(fetcher: fetcher, directory: "Nexus").0
         XCTAssertTrue(valid)
     }
 
@@ -157,7 +157,7 @@ final class BlockMintingTests: XCTestCase {
 
         XCTAssertEqual(block1.index, 1)
         XCTAssertNotEqual(block1.frontier.rawCID, block1.homestead.rawCID)
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 
@@ -184,7 +184,7 @@ final class BlockMintingTests: XCTestCase {
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 
@@ -211,7 +211,7 @@ final class BlockMintingTests: XCTestCase {
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 
@@ -292,7 +292,7 @@ final class BlockMintingTests: XCTestCase {
             previous: genesis, transactions: [signTransaction(body: transfer1Body, keypair: alice)],
             timestamp: t - 20_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let block1Valid = try await block1.validateNexus(fetcher: fetcher)
+        let block1Valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(block1Valid)
 
         let aliceBalance1 = premineAmount - 100
@@ -310,7 +310,7 @@ final class BlockMintingTests: XCTestCase {
             previous: block1, transactions: [signTransaction(body: transfer2Body, keypair: bob)],
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let block2Valid = try await block2.validateNexus(fetcher: fetcher)
+        let block2Valid = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(block2Valid)
         XCTAssertEqual(block2.index, 2)
     }
@@ -406,7 +406,7 @@ final class CrossChainTests: XCTestCase {
         )
 
         XCTAssertEqual(nexusBlock1.index, 1)
-        let valid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let valid = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 
@@ -447,7 +447,7 @@ final class CrossChainTests: XCTestCase {
 
         // Nexus validation ignores deposit/withdrawal actions, so frontier state
         // will mismatch because buildBlock includes deposits but validateNexus does not
-        let valid = try await block2.validateNexus(fetcher: fetcher)
+        let valid = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Nexus should reject blocks containing deposit actions")
     }
 
@@ -480,7 +480,7 @@ final class CrossChainTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx],
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Nexus must reject transactions with withdrawal actions")
     }
 
@@ -516,7 +516,7 @@ final class CrossChainTests: XCTestCase {
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let valid = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
         XCTAssertEqual(nexusBlock1.index, 1)
     }
@@ -638,7 +638,7 @@ final class CrossChainTests: XCTestCase {
             previous: nexusGenesis, transactions: [signTransaction(body: settleBody, keypair: depositor)],
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nexusValid)
     }
 
@@ -679,7 +679,7 @@ final class CrossChainTests: XCTestCase {
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 }
@@ -768,7 +768,7 @@ final class BlockLifecycleTests: XCTestCase {
             previous: genesis, transactions: [signTransaction(body: transferBody, keypair: alice)],
             timestamp: t - 20_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let block1Valid = try await block1.validateNexus(fetcher: fetcher)
+        let block1Valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(block1Valid)
 
         let mined = BlockBuilder.mine(block: block1, targetDifficulty: UInt256.max, maxAttempts: 10)
@@ -820,7 +820,7 @@ final class BlockLifecycleTests: XCTestCase {
             previous: genesis, timestamp: t - 20_000,
             difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await sameTimestamp.validateNexus(fetcher: fetcher)
+        let valid = try await sameTimestamp.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid)
     }
 
@@ -860,7 +860,7 @@ final class BlockLifecycleTests: XCTestCase {
             timestamp: t - 10_000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 }

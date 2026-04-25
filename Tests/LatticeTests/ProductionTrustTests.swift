@@ -303,7 +303,7 @@ final class ChildGenesisValidationTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(body, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Child genesis with directory 'WrongName' but registered as 'Child' should fail")
     }
 }
@@ -380,7 +380,7 @@ final class ClaimSecurityTests: XCTestCase {
                 nexusHash: badBlock.getDifficultyHash(),
                 parentChainBlock: nexusBlock1,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Claim with wrong nonce should fail validation")
         } catch {
             // Wrong nonce produces different SwapKey, deletion proof throws on non-existent key
@@ -452,7 +452,7 @@ final class ClaimSecurityTests: XCTestCase {
                 nexusHash: badBlock.getDifficultyHash(),
                 parentChainBlock: nexusBlock1,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Claim with wrong amount should fail validation")
         } catch {
             // Wrong amount produces different SwapKey, deletion proof throws on non-existent key
@@ -498,7 +498,7 @@ final class FeeOnlyEconomyTests: XCTestCase {
             previous: genesis, transactions: [tx(body, payer)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 }
@@ -548,7 +548,7 @@ final class DustAttackTests: XCTestCase {
             previous: genesis, transactions: [tx(body, funder)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "KV insertions should exceed 200-byte state growth limit")
     }
 }
@@ -640,7 +640,7 @@ final class CrossChainBalanceConservationTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(settleBody, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let nexusValid = try await nv.validateNexus(fetcher: fetcher)
+        let nexusValid = try await nv.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nexusValid)
 
         let totalCirculating = childBalanceAfterSwap + nexusReward

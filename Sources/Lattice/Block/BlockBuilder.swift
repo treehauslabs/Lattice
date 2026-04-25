@@ -209,7 +209,7 @@ public struct BlockBuilder {
         let allReceiptActions = transactionBodies.flatMap { $0.receiptActions }
         let allWithdrawalActions = transactionBodies.flatMap { $0.withdrawalActions }
 
-        let updatedState = try await state.proveAndUpdateState(
+        let (updatedState, _) = try await state.proveAndUpdateState(
             allAccountActions: allAccountActions,
             allActions: allActions,
             allDepositActions: allDepositActions,

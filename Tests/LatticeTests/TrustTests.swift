@@ -104,7 +104,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(settleBody, alice)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher)
+        let nexusValid = try await nexusBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nexusValid)
 
         // Step 3: CLAIM on child chain (claims funds with settlement proof)
@@ -215,7 +215,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             nexusHash: childBlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock3,
             fetcher: fetcher
-        )
+        ).0
         XCTAssertTrue(valid, "Withdrawal after deposit and receipt should succeed")
     }
 
@@ -288,7 +288,7 @@ final class CrossChainRoundtripTests: XCTestCase {
                 nexusHash: childBlock2.getDifficultyHash(),
                 parentChainBlock: nexusBlock2,
                 fetcher: fetcher
-            )
+            ).0
             XCTAssertFalse(valid, "Withdrawal without corresponding receipt on parent chain must be rejected")
         } catch {
             // Expected: receipt proof fails because no receipt exists on nexus
@@ -383,7 +383,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             previous: nexusBlock1, transactions: [settleTx],
             timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let nexusValid = try await nexusBlock2.validateNexus(fetcher: fetcher)
+        let nexusValid = try await nexusBlock2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(nexusValid, "Settlement co-signed by both parties should be valid")
 
         let t3 = base + 3000
@@ -408,7 +408,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             nexusHash: childABlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock3,
             fetcher: fetcher
-        )
+        ).0
         XCTAssertTrue(childAValid, "Bob claiming Alice's swap on ChildA should be valid")
 
         let aliceClaimOnB = TransactionBody(
@@ -427,7 +427,7 @@ final class CrossChainRoundtripTests: XCTestCase {
             nexusHash: childBBlock2.getDifficultyHash(),
             parentChainBlock: nexusBlock3,
             fetcher: fetcher
-        )
+        ).0
         XCTAssertTrue(childBValid, "Alice claiming Bob's swap on ChildB should be valid")
     }
 }
@@ -543,7 +543,7 @@ final class SwapAuthorizationTests: XCTestCase {
                 previous: nexusBlock1, transactions: [tx(settleAndClaimBody, alice)],
                 timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
             )
-            let valid = try await nexusBlock2.validateNexus(fetcher: fetcher)
+            let valid = try await nexusBlock2.validateNexus(fetcher: fetcher).0
             XCTAssertFalse(valid, "Settle and claim in same block should fail — settlement not yet in homestead")
         } catch {
             // Claim proof or build fails because settle is not yet in homestead.receiptState
@@ -671,7 +671,7 @@ final class NonceReplayTests: XCTestCase {
             previous: genesis, transactions: [tx(aliceBody, alice), tx(bobBody, bob)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 }
@@ -711,7 +711,7 @@ final class ReorgBalanceTests: XCTestCase {
             previous: genesis, transactions: [tx(mainBody, alice)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let mainValid = try await mainBlock1.validateNexus(fetcher: fetcher)
+        let mainValid = try await mainBlock1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(mainValid)
         let _ = await chain.submitBlock(
             parentBlockHeaderAndIndex: nil,
@@ -806,7 +806,7 @@ final class MultiSignerTests: XCTestCase {
             previous: block1, transactions: [multiTx],
             timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let valid = try await block2.validateNexus(fetcher: fetcher)
+        let valid = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 
@@ -856,7 +856,7 @@ final class MultiSignerTests: XCTestCase {
             previous: block1, transactions: [onlyAliceTx],
             timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let valid = try await block2.validateNexus(fetcher: fetcher)
+        let valid = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "Missing bob's signature should fail validation")
     }
 }
@@ -1014,7 +1014,7 @@ final class StateGrowthAttackTests: XCTestCase {
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
 
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertFalse(valid, "State delta should exceed tiny 10-byte limit")
     }
 }
@@ -1136,7 +1136,7 @@ final class MultiChainGenesisTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(body, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 
@@ -1175,7 +1175,7 @@ final class MultiChainGenesisTests: XCTestCase {
             previous: nexusGenesis, transactions: [tx(body, kp)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block1.validateNexus(fetcher: fetcher)
+        let valid = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid)
     }
 }
@@ -1217,7 +1217,7 @@ final class DeltaModelTests: XCTestCase {
             previous: genesis, transactions: [tx(body1, alice)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid1 = try await block1.validateNexus(fetcher: fetcher)
+        let valid1 = try await block1.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid1)
 
         // Block 2: bob and carol BOTH send to alice in the same block (two separate txs)
@@ -1246,7 +1246,7 @@ final class DeltaModelTests: XCTestCase {
             previous: block1, transactions: [tx(tx1Body, bob), tx(tx2Body, carol)],
             timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
         )
-        let valid2 = try await block2.validateNexus(fetcher: fetcher)
+        let valid2 = try await block2.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid2, "Two senders crediting the same recipient in one block must be valid")
     }
 
@@ -1341,7 +1341,7 @@ final class DeltaModelTests: XCTestCase {
             previous: genesis, transactions: [tx(tx1Body, alice), tx(tx2Body, bob)],
             timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
         )
-        let valid = try await block.validateNexus(fetcher: fetcher)
+        let valid = try await block.validateNexus(fetcher: fetcher).0
         XCTAssertTrue(valid, "Net-zero cross-transfers with reward should produce valid block")
     }
 }

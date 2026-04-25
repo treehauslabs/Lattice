@@ -4,8 +4,8 @@ public typealias GeneralState = VolumeMerkleDictionaryImpl<String>
 public typealias GeneralStateHeader = VolumeImpl<GeneralState>
 
 public extension GeneralStateHeader {
-    func proveAndUpdateState(allActions: [Action], fetcher: Fetcher) async throws -> GeneralStateHeader {
-        if allActions.isEmpty { return self }
+    func proveAndUpdateState(allActions: [Action], fetcher: Fetcher) async throws -> (GeneralStateHeader, StateDiff) {
+        if allActions.isEmpty { return (self, .empty) }
 
         // Determine proof types and build transforms from action semantics
         var proofs = [[String]: SparseMerkleProof]()
@@ -51,7 +51,7 @@ public extension GeneralStateHeader {
         guard let result = try proven.transform(transforms: transforms) else {
             throw TransformErrors.transformFailed("general state transform returned nil")
         }
-        return result
+        return (result, diffCIDs(old: proven, new: result))
     }
 }
 

@@ -11,7 +11,7 @@ public extension AccountStateHeader {
         allAccountActions: [AccountAction],
         transactionBodies: [TransactionBody] = [],
         fetcher: Fetcher
-    ) async throws -> AccountStateHeader {
+    ) async throws -> (AccountStateHeader, StateDiff) {
         // Aggregate deltas per owner (preserve insertion order)
         var ownerOrder: [String] = []
         var netDeltas: [String: Int64] = [:]
@@ -46,7 +46,7 @@ public extension AccountStateHeader {
             }
         }
 
-        if netDeltas.isEmpty && signerOrder.isEmpty { return self }
+        if netDeltas.isEmpty && signerOrder.isEmpty { return (self, .empty) }
 
         // Resolve targeted paths to read current balances + current nonces
         var resolvePaths = [[String]: ResolutionStrategy]()
@@ -107,13 +107,13 @@ public extension AccountStateHeader {
             }
         }
 
-        if proofs.isEmpty { return resolved }
+        if proofs.isEmpty { return (resolved, .empty) }
 
         let proven = try await resolved.proof(paths: proofs, fetcher: fetcher)
         guard let result = try proven.transform(transforms: transforms) else {
             throw TransformErrors.transformFailed("account state transform returned nil")
         }
-        return result
+        return (result, diffCIDs(old: proven, new: result))
     }
 
     static func signerPrefix(_ transaction: TransactionBody) -> String {

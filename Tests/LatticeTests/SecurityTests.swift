@@ -618,7 +618,7 @@ final class BugRegressionTests: XCTestCase {
     func testAccountStateProveUsesCorrectProofTypes() async throws {
         let emptyAccount = AccountStateHeader(node: AccountState())
         let insertAction = AccountAction(owner: "new_user", delta: Int64(100))
-        let proved = try await emptyAccount.proveAndUpdateState(allAccountActions: [insertAction], fetcher: fetcher)
+        let (proved, _) = try await emptyAccount.proveAndUpdateState(allAccountActions: [insertAction], fetcher: fetcher)
         XCTAssertNotNil(proved, "Insertion proof should succeed on empty state")
     }
 

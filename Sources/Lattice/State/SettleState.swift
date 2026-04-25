@@ -60,8 +60,8 @@ public extension ReceiptStateHeader {
         return proven
     }
 
-    func proveAndUpdateState(allReceiptActions: [ReceiptAction], fetcher: Fetcher) async throws -> ReceiptStateHeader {
-        if allReceiptActions.isEmpty { return self }
+    func proveAndUpdateState(allReceiptActions: [ReceiptAction], fetcher: Fetcher) async throws -> (ReceiptStateHeader, StateDiff) {
+        if allReceiptActions.isEmpty { return (self, .empty) }
         var proofs = [[String]: SparseMerkleProof]()
         for receiptAction in allReceiptActions {
             let receiptKey = ReceiptKey(receiptAction: receiptAction).description
@@ -75,6 +75,6 @@ public extension ReceiptStateHeader {
             transforms[[receiptKey]] = .insert(receiptAction.withdrawer)
         }
         guard let transformResult = try proven.transform(transforms: transforms) else { throw TransformErrors.transformFailed("transform returned nil") }
-        return transformResult
+        return (transformResult, diffCIDs(old: proven, new: transformResult))
     }
 }
