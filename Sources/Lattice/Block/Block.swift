@@ -20,7 +20,7 @@ public struct Block: Hashable {
     public let transactions: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>
     public let difficulty: UInt256
     public let nextDifficulty: UInt256
-    public let spec: HeaderImpl<ChainSpec>
+    public let spec: VolumeImpl<ChainSpec>
     public let parentHomestead: LatticeStateHeader
     public let homestead: LatticeStateHeader
     public let frontier: LatticeStateHeader
@@ -29,7 +29,7 @@ public struct Block: Hashable {
     public let timestamp: Int64
     public let nonce: UInt64
 
-    public init(version: UInt16 = 1, previousBlock: VolumeImpl<Block>?, transactions: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>, difficulty: UInt256, nextDifficulty: UInt256, spec: HeaderImpl<ChainSpec>, parentHomestead: LatticeStateHeader, homestead: LatticeStateHeader, frontier: LatticeStateHeader, childBlocks: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>, index: UInt64, timestamp: Int64, nonce: UInt64) {
+    public init(version: UInt16 = 1, previousBlock: VolumeImpl<Block>?, transactions: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>>, difficulty: UInt256, nextDifficulty: UInt256, spec: VolumeImpl<ChainSpec>, parentHomestead: LatticeStateHeader, homestead: LatticeStateHeader, frontier: LatticeStateHeader, childBlocks: HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Block>>>, index: UInt64, timestamp: Int64, nonce: UInt64) {
         self.version = version
         self.previousBlock = previousBlock
         self.transactions = transactions
@@ -137,7 +137,7 @@ extension Block: Node {
             transactions: properties[TRANSACTIONS_PROPERTY] as? HeaderImpl<MerkleDictionaryImpl<VolumeImpl<Transaction>>> ?? transactions,
             difficulty: difficulty,
             nextDifficulty: nextDifficulty,
-            spec: properties[SPEC_PROPERTY] as? HeaderImpl<ChainSpec> ?? spec,
+            spec: properties[SPEC_PROPERTY] as? VolumeImpl<ChainSpec> ?? spec,
             parentHomestead: properties[PARENT_HOMESTEAD_PROPERTY] as? LatticeStateHeader ?? parentHomestead,
             homestead: properties[HOMESTEAD_PROPERTY] as? LatticeStateHeader ?? homestead,
             frontier: properties[FRONTIER_PROPERTY] as? LatticeStateHeader ?? frontier,

@@ -38,7 +38,7 @@ public struct BlockBuilder {
             transactions: buildTransactionsDictionary(transactions),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: spec),
+            spec: VolumeImpl<ChainSpec>(node: spec),
             parentHomestead: homestead,
             homestead: homestead,
             frontier: frontier,

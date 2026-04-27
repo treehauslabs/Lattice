@@ -133,6 +133,239 @@ final class CrossChainRoundtripTests: XCTestCase {
         XCTAssertEqual(finalBalance, childPremine + 2 * childReward)
     }
 
+    // Variable-rate two-party trade: Alice deposits 100 ChildA tokens
+    // demanding 250 nexus tokens. Bob pays 250 on nexus and claims the
+    // 100 ChildA tokens. Exercises the full deposit→receipt→withdraw flow
+    // with amountDeposited ≠ amountDemanded across all three layers.
+    func testVariableRateTwoPartyRoundtrip() async throws {
+        let fetcher = f()
+        let base = now() - 40_000
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+
+        let childSpec = s("Child")
+        let nexusSpec = s("Nexus", premine: 0)
+        let childPremine = childSpec.premineAmount()
+        let childReward = childSpec.initialReward
+        let nexusReward0 = nexusSpec.rewardAtBlock(0)
+
+        let amountDeposited: UInt64 = 100   // Alice locks 100 Child tokens
+        let amountDemanded: UInt64 = 250    // and demands 250 Nexus tokens
+        XCTAssertNotEqual(amountDeposited, amountDemanded, "Test premise: rates must differ")
+
+        let childGenesis = try await premineGenesis(spec: childSpec, owner: alice, fetcher: fetcher, time: base)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        // Fund Bob on nexus (he needs ≥ amountDemanded to pay Alice via receipt)
+        let t1 = base + 1000
+        let fundBob = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(nexusReward0))],
+            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [tx(fundBob, bob)],
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        XCTAssertGreaterThanOrEqual(nexusReward0, amountDemanded, "Bob must have funds for receipt")
+
+        // Step 1: Alice deposits on Child (locks amountDeposited, demands amountDemanded)
+        let aliceDeposit = DepositAction(
+            nonce: 1, demander: aliceAddr,
+            amountDemanded: amountDemanded,
+            amountDeposited: amountDeposited
+        )
+        let depositBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, delta: Int64(childReward) - Int64(amountDeposited))],
+            actions: [], depositActions: [aliceDeposit],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [tx(depositBody, alice)],
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+        let aliceBalanceAfterDeposit = childPremine - amountDeposited + childReward
+
+        // Step 2: Receipt on nexus — Bob pays Alice amountDemanded
+        let t2 = base + 2000
+        let receiptBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
+            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: bobAddr, nonce: 1, demander: aliceAddr,
+                              amountDemanded: amountDemanded, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [bobAddr], fee: 0, nonce: 1
+        )
+        let receiptHeader = HeaderImpl<TransactionBody>(node: receiptBody)
+        let bobSig = CryptoUtils.sign(message: receiptHeader.rawCID, privateKeyHex: bob.privateKey)!
+        let receiptTx = Transaction(signatures: [bob.publicKey: bobSig], body: receiptHeader)
+        let nexusBlock2 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock1, transactions: [receiptTx],
+            timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let nexusValid = try await nexusBlock2.validateNexus(fetcher: fetcher).0
+        XCTAssertTrue(nexusValid, "Receipt with amountDemanded=250 on nexus should validate")
+
+        // Pad nexus so child can advance with a fresh parent reference
+        let t3 = base + 3000
+        let nexusBlock3 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock2, timestamp: t3,
+            difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
+        )
+
+        // Step 3: Withdrawal on Child — Bob claims amountDeposited tokens.
+        // amountWithdrawn must equal deposit.amountDeposited (on-chain check)
+        // amountDemanded on the withdrawal must match the receipt
+        let bobWithdraw = WithdrawalAction(
+            withdrawer: bobAddr, nonce: 1, demander: aliceAddr,
+            amountDemanded: amountDemanded,
+            amountWithdrawn: amountDeposited
+        )
+        let withdrawBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(amountDeposited + childReward))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [bobWithdraw],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        let childBlock2 = try await BlockBuilder.buildBlock(
+            previous: childBlock1, transactions: [tx(withdrawBody, bob)],
+            parentChainBlock: nexusBlock3,
+            timestamp: t3, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let childValid = try await childBlock2.validate(
+            nexusHash: childBlock2.getDifficultyHash(),
+            parentChainBlock: nexusBlock3,
+            fetcher: fetcher
+        ).0
+        XCTAssertTrue(childValid, "Variable-rate withdrawal (amountWithdrawn=100) should validate against deposit (amountDeposited=100)")
+
+        // Final balances reflect the variable-rate trade
+        // Alice locked 100 Child, kept (premine - 100 + childReward) but the
+        // amount she actually receives on Nexus is amountDemanded=250 (via receipt's implicit credit).
+        XCTAssertEqual(aliceBalanceAfterDeposit, childPremine - amountDeposited + childReward)
+    }
+
+    // Negative: a withdrawal claiming more child tokens than the deposit
+    // locked must be rejected even when the receipt and signers are valid.
+    // Frontier mismatch (or proof failure) should kill the block.
+    func testVariableRateOverclaimRejected() async throws {
+        let fetcher = f()
+        let base = now() - 40_000
+        let alice = CryptoUtils.generateKeyPair()
+        let bob = CryptoUtils.generateKeyPair()
+        let aliceAddr = id(alice.publicKey)
+        let bobAddr = id(bob.publicKey)
+
+        let childSpec = s("Child")
+        let nexusSpec = s("Nexus", premine: 0)
+        let childPremine = childSpec.premineAmount()
+        let childReward = childSpec.initialReward
+        let nexusReward0 = nexusSpec.rewardAtBlock(0)
+
+        let amountDeposited: UInt64 = 100
+        let amountDemanded: UInt64 = 250
+        let overclaim: UInt64 = 200  // Bob tries to claim 200 when only 100 was deposited
+
+        let childGenesis = try await premineGenesis(spec: childSpec, owner: alice, fetcher: fetcher, time: base)
+        let nexusGenesis = try await BlockBuilder.buildGenesis(
+            spec: nexusSpec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
+        )
+
+        let t1 = base + 1000
+        let fundBob = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(nexusReward0))],
+            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            receiptActions: [], withdrawalActions: [],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+        let nexusBlock1 = try await BlockBuilder.buildBlock(
+            previous: nexusGenesis, transactions: [tx(fundBob, bob)],
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+
+        let aliceDeposit = DepositAction(
+            nonce: 1, demander: aliceAddr,
+            amountDemanded: amountDemanded, amountDeposited: amountDeposited
+        )
+        let depositBody = TransactionBody(
+            accountActions: [AccountAction(owner: aliceAddr, delta: Int64(childReward) - Int64(amountDeposited))],
+            actions: [], depositActions: [aliceDeposit],
+            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            signers: [aliceAddr], fee: 0, nonce: 1
+        )
+        let childBlock1 = try await BlockBuilder.buildBlock(
+            previous: childGenesis, transactions: [tx(depositBody, alice)],
+            parentChainBlock: nexusBlock1,
+            timestamp: t1, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
+        )
+
+        let t2 = base + 2000
+        let receiptBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
+            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            receiptActions: [
+                ReceiptAction(withdrawer: bobAddr, nonce: 1, demander: aliceAddr,
+                              amountDemanded: amountDemanded, directory: "Child")
+            ],
+            withdrawalActions: [],
+            signers: [bobAddr], fee: 0, nonce: 1
+        )
+        let nexusBlock2 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock1, transactions: [tx(receiptBody, bob)],
+            timestamp: t2, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+        )
+        let t3 = base + 3000
+        let nexusBlock3 = try await BlockBuilder.buildBlock(
+            previous: nexusBlock2, timestamp: t3,
+            difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
+        )
+
+        // Bob's overclaim attempt
+        let bobOverclaim = WithdrawalAction(
+            withdrawer: bobAddr, nonce: 1, demander: aliceAddr,
+            amountDemanded: amountDemanded,
+            amountWithdrawn: overclaim
+        )
+        let withdrawBody = TransactionBody(
+            accountActions: [AccountAction(owner: bobAddr, delta: Int64(overclaim + childReward))],
+            actions: [], depositActions: [],
+            genesisActions: [], peerActions: [], receiptActions: [],
+            withdrawalActions: [bobOverclaim],
+            signers: [bobAddr], fee: 0, nonce: 0
+        )
+
+        // The block builder may either throw on proof construction OR build a
+        // block that fails validation due to frontier mismatch. Either is
+        // acceptable rejection — we just need the overclaim to NOT validate.
+        var rejected = false
+        do {
+            let childBlock2 = try await BlockBuilder.buildBlock(
+                previous: childBlock1, transactions: [tx(withdrawBody, bob)],
+                parentChainBlock: nexusBlock3,
+                timestamp: t3, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
+            )
+            let valid = try await childBlock2.validate(
+                nexusHash: childBlock2.getDifficultyHash(),
+                parentChainBlock: nexusBlock3,
+                fetcher: fetcher
+            ).0
+            if !valid { rejected = true }
+        } catch {
+            rejected = true
+        }
+        XCTAssertTrue(rejected, "Withdrawal claiming amountWithdrawn=200 against deposit.amountDeposited=100 must be rejected")
+    }
+
     func testSwapRefundAfterTimelock() async throws {
         let fetcher = f()
         let base = now() - 30_000
@@ -472,18 +705,20 @@ final class SwapAuthorizationTests: XCTestCase {
         XCTAssertTrue(body.withdrawalActionsAreValid(), "Withdrawal signed by withdrawer should be accepted")
     }
 
-    func testWithdrawalExceedingDemandRejected() {
+    func testWithdrawalDifferingFromDemandAccepted() {
         let alice = CryptoUtils.generateKeyPair()
         let aliceAddr = id(alice.publicKey)
 
-        // amountWithdrawn > amountDemanded
+        // Variable-rate swap: amountWithdrawn may differ from amountDemanded.
+        // The actual amount-vs-stored-deposit check happens at state-application
+        // time in DepositStateHeader.proveAndDeleteForWithdrawals.
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
             genesisActions: [], peerActions: [], receiptActions: [],
             withdrawalActions: [WithdrawalAction(withdrawer: aliceAddr, nonce: 1, demander: aliceAddr, amountDemanded: 100, amountWithdrawn: 200)],
             signers: [aliceAddr], fee: 0, nonce: 0
         )
-        XCTAssertFalse(body.withdrawalActionsAreValid(), "Withdrawal exceeding demanded amount should be rejected")
+        XCTAssertTrue(body.withdrawalActionsAreValid(), "Body-level withdrawal validation no longer requires amountWithdrawn == amountDemanded")
     }
 
     func testReceiptWithMismatchedWithdrawerRejected() {

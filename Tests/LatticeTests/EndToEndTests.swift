@@ -41,7 +41,7 @@ func makeGenesisBlock(
         transactions: emptyTransactions(),
         difficulty: difficulty,
         nextDifficulty: difficulty,
-        spec: HeaderImpl<ChainSpec>(node: s),
+        spec: VolumeImpl<ChainSpec>(node: s),
         parentHomestead: emptyState,
         homestead: emptyState,
         frontier: emptyState,

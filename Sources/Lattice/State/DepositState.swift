@@ -66,16 +66,20 @@ public extension DepositStateHeader {
         var transforms = [[String]: Transform]()
         for wa in allWithdrawalActions {
             let key = DepositKey(withdrawalAction: wa).description
-            let exists: Bool
-            if let node = resolved.node, (try? node.get(key: key)) != nil {
-                exists = true
-            } else {
-                exists = false
+            // When the deposit exists, the stored amountDeposited must match
+            // the claimed amountWithdrawn — this is the on-chain check that
+            // prevents over-claiming under variable-rate swaps. When the
+            // deposit is absent (already consumed or never existed), the
+            // resulting frontier mismatch causes block validation to reject
+            // the block, so we tolerate the missing-deposit case here so
+            // BlockBuilder.buildBlock doesn't throw on otherwise-buildable
+            // (but ultimately invalid) blocks.
+            guard let node = resolved.node, let storedDeposited: UInt64 = try? node.get(key: key) else {
+                continue
             }
-            if exists {
-                proofs[[key]] = .deletion
-                transforms[[key]] = .delete
-            }
+            if storedDeposited != wa.amountWithdrawn { throw StateErrors.conflictingActions }
+            proofs[[key]] = .deletion
+            transforms[[key]] = .delete
         }
         if proofs.isEmpty { return (self, .empty) }
         let proven = try await proof(paths: proofs, fetcher: fetcher)
@@ -89,8 +93,8 @@ public extension DepositStateHeader {
         if allDepositActions.isEmpty { return (self, .empty) }
         var proofs = [[String]: SparseMerkleProof]()
         for depositAction in allDepositActions {
-            if depositAction.amountDeposited != depositAction.amountDemanded { throw StateErrors.conflictingActions }
             if depositAction.amountDeposited == 0 { throw StateErrors.conflictingActions }
+            if depositAction.amountDemanded == 0 { throw StateErrors.conflictingActions }
             let depositKey = DepositKey(depositAction: depositAction).description
             if proofs[[depositKey]] != nil { throw StateErrors.conflictingActions }
             proofs[[depositKey]] = .insertion

@@ -34,7 +34,7 @@ public struct TransactionBody: Scalar {
         let signerSet = Set(signers)
         for depositAction in depositActions {
             if depositAction.amountDeposited == 0 { return false }
-            if depositAction.amountDeposited != depositAction.amountDemanded { return false }
+            if depositAction.amountDemanded == 0 { return false }
             if !signerSet.contains(depositAction.demander) { return false }
         }
         return true
@@ -52,8 +52,8 @@ public struct TransactionBody: Scalar {
     func withdrawalActionsAreValid() -> Bool {
         let signerSet = Set(signers)
         for withdrawalAction in withdrawalActions {
-            if withdrawalAction.amountWithdrawn != withdrawalAction.amountDemanded { return false }
             if withdrawalAction.amountWithdrawn == 0 { return false }
+            if withdrawalAction.amountDemanded == 0 { return false }
             if !signerSet.contains(withdrawalAction.withdrawer) { return false }
         }
         return true

@@ -153,7 +153,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             ), kp)]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: nexusBlock1.homestead, // WRONG: should be nexusBlock2.homestead
             homestead: childGenesis.frontier,
             frontier: childGenesis.frontier,
@@ -222,7 +222,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             ), kp)]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: LatticeState.emptyHeader, // WRONG: empty instead of nexusBlock1.homestead
             homestead: childGenesis.frontier,
             frontier: childGenesis.frontier,
@@ -292,7 +292,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             ), kp)]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: nexusBlock1.homestead,
             homestead: childGenesis.frontier,
             frontier: childGenesis.frontier,
@@ -368,7 +368,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: nexusBlock1.homestead, // WRONG: should be nexusBlock2.homestead
             homestead: LatticeState.emptyHeader,
             frontier: LatticeState.emptyHeader,
@@ -424,7 +424,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: nexusBlock1.homestead,
             homestead: LatticeState.emptyHeader,
             frontier: LatticeState.emptyHeader,
@@ -532,7 +532,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             ), kp)]),
             difficulty: difficulty,
             nextDifficulty: difficulty,
-            spec: HeaderImpl<ChainSpec>(node: childSpec),
+            spec: VolumeImpl<ChainSpec>(node: childSpec),
             parentHomestead: nexusBlock2.homestead, // STALE: should be nexusBlock3.homestead
             homestead: childBlock1.frontier,
             frontier: childBlock1.frontier,

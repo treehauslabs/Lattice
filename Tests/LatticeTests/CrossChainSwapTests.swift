@@ -109,7 +109,7 @@ final class DepositStateTests: XCTestCase {
         XCTAssertEqual(stored, depositAmount, "Deposit should be stored in state")
     }
 
-    func testDepositAmountMismatchRejected() {
+    func testDepositVariableRateAccepted() {
         let kp = CryptoUtils.generateKeyPair()
         let kpAddr = addr(kp.publicKey)
 
@@ -121,7 +121,7 @@ final class DepositStateTests: XCTestCase {
             genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
-        XCTAssertFalse(body.depositActionsAreValid(), "amountDeposited != amountDemanded should be rejected")
+        XCTAssertTrue(body.depositActionsAreValid(), "amountDeposited may differ from amountDemanded for variable-rate swaps")
     }
 
     func testDepositZeroAmountRejected() {
@@ -267,7 +267,7 @@ final class ReceiptStateTests: XCTestCase {
 @MainActor
 final class WithdrawalValidationTests: XCTestCase {
 
-    func testWithdrawalAmountMustMatchDemand() {
+    func testWithdrawalVariableRateAccepted() {
         let kp = CryptoUtils.generateKeyPair()
         let kpAddr = addr(kp.publicKey)
 
@@ -280,7 +280,7 @@ final class WithdrawalValidationTests: XCTestCase {
             ],
             signers: [kpAddr], fee: 0, nonce: 0
         )
-        XCTAssertFalse(body.withdrawalActionsAreValid(), "amountWithdrawn != amountDemanded should be rejected")
+        XCTAssertTrue(body.withdrawalActionsAreValid(), "amountWithdrawn may differ from amountDemanded; storage check happens at state-application time")
     }
 
     func testWithdrawalZeroAmountRejected() {
