@@ -309,7 +309,7 @@ public actor ChainLevel {
         return block.homestead.rawCID == LatticeState.emptyHeader.rawCID
     }
 
-    func validateChildBlock(
+    public func validateChildBlock(
         childBlock: Block,
         parentBlock: Block,
         ancestorSpecs: [ChainSpec] = [],
