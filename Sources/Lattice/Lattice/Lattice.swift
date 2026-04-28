@@ -78,20 +78,43 @@ public actor Lattice {
         // Always walk the entire childBlocks tree: per the PoW-per-level rule,
         // grandchildren may pass a level's difficulty even when the intermediate
         // block (or the nexus itself) does not.
-        let treeResult = await nexus.acceptChildBlockTree(
+        let treeResult = await processChildBlockTree(
             parentBlock: resolvedBlock,
             parentBlockHeader: blockHeader,
-            nexusHash: nexusHash,
             fetcher: fetcher
         )
-        for dir in treeResult.newlyDiscovered {
-            await delegate?.lattice(self, didDiscoverChildChain: dir)
-        }
 
         let accepted = nexusAccepted || treeResult.anyAccepted
         let dTotal = ContinuousClock.now - tTotal
         print("[LATTICE] processBlockHeader \(tag) accepted=\(accepted) nexus=\(nexusAccepted) anyChild=\(treeResult.anyAccepted) newChildren=\(treeResult.newlyDiscovered.count) total=\(dTotal)")
         return (accepted, nexusDiff)
+    }
+
+    /// Drive child-side effects of a parent block: discover and subscribe new
+    /// children, submit embedded child blocks recursively through the merged-
+    /// mining tree, and notify the delegate of newly-discovered directories.
+    ///
+    /// The caller is responsible for ensuring `parentBlock` is already accepted
+    /// into the nexus chain — this method does not run nexus-level validation
+    /// or `submitBlock`. Use it when bulk chain state has been installed
+    /// out-of-band (e.g., snapshot-sync `chain.resetFrom`) and only the per-
+    /// parent child-tree side effects remain.
+    @discardableResult
+    public func processChildBlockTree(
+        parentBlock: Block,
+        parentBlockHeader: BlockHeader,
+        fetcher: Fetcher
+    ) async -> ChildTreeResult {
+        let result = await nexus.acceptChildBlockTree(
+            parentBlock: parentBlock,
+            parentBlockHeader: parentBlockHeader,
+            nexusHash: parentBlock.getDifficultyHash(),
+            fetcher: fetcher
+        )
+        for dir in result.newlyDiscovered {
+            await delegate?.lattice(self, didDiscoverChildChain: dir)
+        }
+        return result
     }
 }
 

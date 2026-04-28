@@ -1,15 +1,14 @@
-# Cross-Chain Exchange Protocol: Formal Specification
+# Cross-Chain Transfer Protocol: Formal Specification
 
 ## Overview
 
-This document specifies the protocol for trustless cross-chain atomic swaps between any two chains in the Lattice hierarchy. The protocol requires no trusted intermediaries -- all verification is performed via Sparse Merkle proofs against state roots committed in blocks. Fees are fully refundable on timeout.
+This document specifies the protocol for trustless cross-chain value transfer between parent and child chains in the Lattice hierarchy. The protocol requires no trusted intermediaries -- all verification is performed via Sparse Merkle proofs against state roots committed in blocks.
 
 ## Definitions
 
 - **N**: Nexus (root) chain
-- **X**, **Y**: Any two chains in the lattice hierarchy
-- **maker**: An entity that signs an order expressing intent to trade
-- **matcher**: An entity (typically a miner) that pairs compatible orders and includes them in blocks
+- **P**: Parent chain (any chain in the hierarchy)
+- **C**: Child chain (direct descendant of P)
 - **B[i]**: Block at index `i` on a given chain
 - **homestead(B)**: The confirmed state entering block B (equals frontier of B's parent)
 - **frontier(B)**: The state after applying B's transactions to homestead(B)
@@ -18,59 +17,61 @@ This document specifies the protocol for trustless cross-chain atomic swaps betw
 
 ## Types
 
-### SwapOrder
+### DepositAction
 
 ```
-SwapOrder = {
-    maker:        CID(PublicKey),   // Maker's address
-    sourceChain:  string,           // Chain where tokens are locked
-    sourceAmount: uint64,           // Maximum tokens to sell
-    destChain:    string,           // Chain where tokens are received
-    destAmount:   uint64,           // Minimum tokens to receive
-    timelock:     uint64,           // Expiry block height and refund threshold
-    nonce:        uint128,          // Unique identifier
-    fee:          uint64            // Fee the maker agrees to pay (proportional to fill)
+DepositAction = {
+    nonce:           uint128,          // Unique identifier
+    demander:        CID(PublicKey),   // Recipient on the parent chain
+    amountDemanded:  uint64,           // Amount to transfer on the parent chain
+    amountDeposited: uint64            // Amount locked on the child chain
 }
 ```
 
-### SignedOrder
+A deposit locks `amountDeposited` tokens on the child chain and declares that `demander` should receive `amountDemanded` tokens on the parent chain. The deposit supports variable-rate transfers: `amountDeposited` and `amountDemanded` may differ, enabling exchange rate adjustments between chains.
+
+### ReceiptAction
 
 ```
-SignedOrder = {
-    order:     SwapOrder,
-    publicKey: string,              // Maker's secp256k1 public key (hex)
-    signature: string               // secp256k1 signature over doubleSha256(JSON(order))
-}
-
-Validity: verify(signature, doubleSha256(JSON(order)), publicKey) AND CID(publicKey) == order.maker
-```
-
-### MatchedOrder
-
-```
-MatchedOrder = {
-    orderA:      SignedOrder,
-    orderB:      SignedOrder,
-    nonce:       uint128,           // Match identifier
-    fillAmountA: uint64,            // Tokens filled from order A
-    fillAmountB: uint64             // Tokens filled from order B
+ReceiptAction = {
+    withdrawer:     CID(PublicKey),   // Original depositor (will withdraw on child)
+    nonce:          uint128,          // Must match the deposit nonce
+    demander:       CID(PublicKey),   // Recipient (credited on parent)
+    amountDemanded: uint64,           // Amount transferred on parent
+    directory:      string            // Child chain where the deposit originated
 }
 ```
 
-### SwapKey
+A receipt on the parent chain acknowledges a deposit on the child chain. It derives two account actions: debiting `withdrawer` by `amountDemanded` and crediting `demander` by `amountDemanded`.
+
+### WithdrawalAction
 
 ```
-SwapKey = sender || "/" || recipient || "/" || amount || "/" || timelock || "/" || nonce
-
-Serialization: "sender/recipient/amount/timelock/nonce"
+WithdrawalAction = {
+    withdrawer:     CID(PublicKey),   // Must match the receipt's withdrawer
+    nonce:          uint128,          // Must match the deposit nonce
+    demander:       CID(PublicKey),   // Must match the deposit's demander
+    amountDemanded: uint64,           // Must match the deposit's amountDemanded
+    amountWithdrawn: uint64           // Must exactly match the stored amountDeposited
+}
 ```
 
-### SettleKey
+A withdrawal on the child chain releases the originally deposited tokens. The `amountWithdrawn` must exactly match the `amountDeposited` stored in the deposit state -- this is verified at consensus via state proof.
+
+### DepositKey
 
 ```
-SettleKey = directory || ":" || swapKey
+DepositKey = demander || "/" || amountDemanded || "/" || nonce
 
-Serialization: "directory:sender/recipient/amount/timelock/nonce"
+Serialization: "demander/amountDemanded/nonce"
+```
+
+### ReceiptKey
+
+```
+ReceiptKey = directory || "/" || demander || "/" || amountDemanded || "/" || nonce
+
+Serialization: "directory/demander/amountDemanded/nonce"
 ```
 
 ## Invariants
@@ -80,302 +81,148 @@ Serialization: "directory:sender/recipient/amount/timelock/nonce"
 homestead(B) == frontier(B')
 ```
 
-**INV-2: Swap uniqueness.** For any SwapKey K, at most one entry exists in swapState:
+**INV-2: Deposit uniqueness.** For any DepositKey K, at most one entry exists in depositState:
 ```
-∀ K: |{ entry ∈ swapState | entry.key == K }| ≤ 1
+forall K: |{ entry in depositState | entry.key == K }| <= 1
 ```
 
-**INV-3: Settlement uniqueness.** For any SettleKey K, at most one entry exists in settleState:
+**INV-3: Receipt uniqueness.** For any ReceiptKey K, at most one entry exists in receiptState:
 ```
-∀ K: |{ entry ∈ settleState | entry.key == K }| ≤ 1
+forall K: |{ entry in receiptState | entry.key == K }| <= 1
 ```
 
 **INV-4: Balance conservation.** For any block B at index i with spec S:
 ```
-totalCredits ≤ totalDebits + S.reward(i) + totalFees + totalSwapClaimed - totalSwapLocked + totalOrderReleased - totalOrderLocked
+totalCredits <= totalDebits + S.reward(i) + totalFees + totalWithdrawn - totalDeposited
 ```
 
-**INV-5: Refundable fees.** The swap lock amount includes the proportional fee:
+**INV-5: Withdrawal exactness.** The stored amountDeposited must exactly match the declared amountWithdrawn:
 ```
-swapLockAmount = fillAmount + floor(order.fee × fillAmount / order.sourceAmount)
+depositState[key] == withdrawalAction.amountWithdrawn
 ```
-This ensures the full locked value is returned on refund.
-
-**INV-6: Order expiry.** Matched orders are only valid before their timelock:
-```
-∀ match ∈ matchedOrders: match.orderA.timelock > blockIndex AND match.orderB.timelock > blockIndex
-```
-
-## Settlement Chain Selection
-
-Settlement goes on the **lowest common ancestor (LCA)** of the two source chains in the chain hierarchy, not always the nexus. This reduces load on the nexus for swaps between tokens on the same chain or between sibling chains.
-
-- For swaps where both orders target the same chain (e.g., both sourceChain == "ChainA"), the LCA is that chain itself. The entire lifecycle (match, lock, settle, claim) happens on ChainA without involving the nexus.
-- For swaps between sibling chains under the nexus (e.g., sourceChain "ChainA" and "ChainB"), the LCA is the nexus.
-- The `chainPath` on the transaction determines which chain processes it and where settlement is recorded.
-
-Claim verification checks **both** the chain's own `settleState` and its `parentHomestead.settleState`. This means a claim succeeds whether the settlement was placed on the chain itself (when it's the LCA) or on its parent.
 
 ## Protocol Steps
 
-### Step 1: Lock (on each maker's source chain)
+### Step 1: Deposit (on the child chain)
 
 **Preconditions:**
-- Transaction is included in a block on the maker's source chain
-- Transaction body contains a `MatchedOrder` M in `matchedOrders`
-- Both `SignedOrder`s are valid (signatures verify, makers match)
-- Orders are compatible (see Matching Rules below)
-- Orders are not expired (`timelock > blockIndex`)
+- Transaction is included in a block on the child chain
+- Transaction body contains a `DepositAction`
+- `demander` is in `tx.body.signers` (authorization)
+- `amountDeposited > 0` and `amountDemanded > 0`
 
-**Derived state transitions on chain X (where orderA.sourceChain == X):**
-
-```
-// Account debit
-AccountAction(owner: orderA.maker, delta: -(fillAmountA + feeA))
-
-// Swap lock (fill + fee locked together)
-swapKeyA = SwapKey(nonceA, makerA, makerB, fillAmountA + feeA, timelock)
-X.swapState' = X.swapState.insert(swapKeyA, fillAmountA + feeA)
-```
-
-**Derived state transition on nexus (regardless of which chain the block is on):**
+**State transition on child chain C:**
 
 ```
-// Settlement record
-settleKeyA = SettleKey(X, swapKeyA)
-settleKeyB = SettleKey(Y, swapKeyB)
-N.settleState' = N.settleState.insert(settleKeyA, nonce).insert(settleKeyB, nonce)
-```
-
-**Proof obligations:**
-- SwapKey insertion proof: key does NOT exist in swapState (prevents duplicate locks)
-- SettleKey insertion proofs: keys do NOT exist in settleState (prevents duplicate settlements)
-
-**Effect on balance conservation (INV-4):**
-- `totalDebits` increases by `fillAmountA + feeA`
-- `totalSwapLocked` increases by `fillAmountA + feeA`
-- Net effect on available balance: 0 (debit exactly offset by lock)
-
-### Step 2: Claim (on each maker's source chain)
-
-**Preconditions:**
-- Transaction is included in a block on the source chain
-- Transaction body contains a `MatchedOrder` M in `claimedOrders`
-- Settlement proof exists: `SettleKey(X, swapKeyA)` in settleState (nexus) or parentHomestead.settleState (child chain)
-
-**Derived state transitions on chain X (where orderA.sourceChain == X):**
-
-```
-// Counterparty credit (fill amount only, NOT including fee)
-AccountAction(owner: orderB.maker, delta: +fillAmountA)
-
-// Swap unlock (full lock amount)
-swapKeyA = SwapKey(nonceA, makerA, makerB, fillAmountA + feeA, timelock)
-X.swapState' = X.swapState.delete(swapKeyA)
+// Deposit lock
+depositKey = DepositKey(demander, amountDemanded, nonce)
+C.depositState' = C.depositState.insert(depositKey, amountDeposited)
 ```
 
 **Proof obligation:**
-- SwapKey mutation proof: key EXISTS in swapState (proves lock exists, then deletes it)
+- DepositKey insertion proof: key does NOT exist in depositState (prevents duplicate deposits)
 
 **Effect on balance conservation (INV-4):**
-- `totalCredits` increases by `fillAmountA` (counterparty) + miner coinbase fee
-- `totalSwapClaimed` increases by `fillAmountA + feeA`
-- The miner captures the fee from the excess: `swapClaimed - counterpartyCredit = feeA`
+- `totalDeposited` increases by `amountDeposited`
+- The depositor's account is not debited -- the tokens are "locked" by reducing the available balance pool in the conservation equation
 
-### Step 3: Refund (after timeout)
+### Step 2: Receipt (on the parent chain)
 
 **Preconditions:**
-- `blockIndex > timelock` (swap has expired)
-- Sender submits a `SwapClaimAction` with `isRefund = true`
+- Transaction is included in a block on the parent chain
+- Transaction body contains a `ReceiptAction`
+- `withdrawer` is in `tx.body.signers`
+- The deposit is verifiable via the child chain's state root committed in the child block embedded in the parent block
 
-**State transition:**
-
-```
-// Sender reclaims full locked amount (fill + fee)
-swapKeyA = SwapKey(nonceA, makerA, makerB, fillAmountA + feeA, timelock)
-X.swapState' = X.swapState.delete(swapKeyA)
-// Sender credits themselves via explicit AccountAction
-```
-
-**Effect:** The maker gets back everything they locked, including the fee. No value is lost.
-
-## Matching Rules
-
-A `MatchedOrder(orderA, orderB, nonce, fillAmountA, fillAmountB)` is valid if:
-
-1. `orderA.sourceChain == orderB.destChain` (cross-chain match)
-2. `orderA.destChain == orderB.sourceChain` (symmetric)
-3. `orderA.sourceChain != orderA.destChain` (no same-chain swaps)
-4. `orderA.maker != orderB.maker` (different parties)
-5. `orderA.timelock == orderB.timelock` (synchronized expiry)
-6. `orderA.timelock > 0` (positive timelock)
-7. `fillAmountA > 0 && fillAmountB > 0` (non-zero fills)
-8. `fillAmountA <= orderA.sourceAmount` (within order limit)
-9. `fillAmountB <= orderB.sourceAmount` (within order limit)
-10. `fillAmountA + feeA <= Int64.max` (safe for delta arithmetic)
-11. `fillAmountB + feeB <= Int64.max` (safe for delta arithmetic)
-12. `fillAmountB × orderA.sourceAmount >= fillAmountA × orderA.destAmount` (A's rate satisfied)
-13. `fillAmountA × orderB.sourceAmount >= fillAmountB × orderB.destAmount` (B's rate satisfied)
-
-Rate comparisons use UInt128 cross-multiplication to avoid floating-point imprecision.
-
-**Block-level rules** (in `matchedOrdersAreValid`):
-- `timelock > blockIndex` for all matched orders (expiry check)
-- Uniform clearing price: all matches in the same directed pair execute at the same rate
-- Cumulative fills per order (keyed by `doubleSha256(JSON(order))`) must not exceed `sourceAmount`
-
-## Fee Model
-
-### Proportional Fee
-
-Each order specifies a `fee` for the full `sourceAmount`. The actual fee charged is proportional to the fill:
+**State transition on parent chain P:**
 
 ```
-feeA = floor(orderA.fee × fillAmountA / orderA.sourceAmount)
+// Receipt record
+receiptKey = ReceiptKey(directory, demander, amountDemanded, nonce)
+P.receiptState' = P.receiptState.insert(receiptKey, CID(withdrawer.publicKey))
+
+// Derived account actions
+AccountAction(owner: withdrawer, delta: -amountDemanded)
+AccountAction(owner: demander, delta: +amountDemanded)
 ```
 
-Computed via UInt128 to avoid overflow.
+**Proof obligation:**
+- ReceiptKey insertion proof: key does NOT exist in receiptState (prevents duplicate receipts)
 
-### Refundable Fee Design
+**Effect on balance conservation (INV-4):**
+- The derived account actions produce equal debits and credits, netting to zero
 
-The fee is locked alongside the fill amount in swap state:
+### Step 3: Withdrawal (on the child chain)
+
+**Preconditions:**
+- Transaction is included in a block on the child chain
+- Transaction body contains a `WithdrawalAction`
+- `withdrawer` is in `tx.body.signers`
+- Corresponding deposit exists in `homestead.depositState`
+- Corresponding receipt exists in `parentHomestead.receiptState`
+- Stored `amountDeposited` equals declared `amountWithdrawn`
+
+**State transition on child chain C:**
 
 ```
-swapLockAmount = fillAmountA + feeA
+// Deposit deletion
+depositKey = DepositKey(demander, amountDemanded, nonce)
+C.depositState' = C.depositState.delete(depositKey)
 ```
 
-**Why:** If the fee were collected at lock time (non-refundable), a maker whose swap times out would lose the fee despite the trade never completing. By locking fee + fill together:
+**Proof obligations:**
+- Deposit deletion proof: key EXISTS in depositState (proves the deposit was made)
+- Receipt mutation proof: corresponding ReceiptKey EXISTS in parentHomestead.receiptState (proves the parent acknowledged the deposit)
+- Receipt withdrawer verification: the `CID(PublicKey)` stored in the receipt must match the withdrawal's `withdrawer`
 
-- **Successful trade:** Counterparty gets `fillAmount`, miner gets `fee` (from swapClaimed excess)
-- **Timeout:** Maker refunds the full `swapLockAmount` -- no loss
+**Effect on balance conservation (INV-4):**
+- `totalWithdrawn` increases by `amountWithdrawn`
+- The tokens return to the available balance pool
 
-### Fee Accounting
+## Variable-Rate Transfers
 
-Order fees do NOT appear in the `totalFees` term of the balance equation. Instead, they flow through the `totalSwapClaimed` term:
+The protocol supports variable-rate cross-chain transfers where `amountDeposited` on the child chain differs from `amountDemanded` on the parent chain. This enables:
 
-```
-Balance equation: totalCredits ≤ totalDebits + reward + totalFees + swapClaimed - swapLocked
+- **Exchange rate adjustments**: A child chain with different token economics can define its own exchange rate to the parent
+- **Fee-inclusive transfers**: The depositor can lock more than is demanded, with the difference acting as a fee
 
-Lock phase:   swapLocked = fill + fee,  swapClaimed = 0        → net: -(fill + fee) + debits
-Claim phase:  swapLocked = 0,           swapClaimed = fill + fee → credits: fill (counterparty) + fee (miner)
-Refund:       swapLocked = 0,           swapClaimed = fill + fee → credit: fill + fee (original sender)
-```
-
-The `derivedOrderFees` function reports:
-- **Lock phase:** 0 (no fee available)
-- **Claim phase:** Full proportional fee (available for miner coinbase)
+The withdrawal step verifies that `amountWithdrawn == amountDeposited` (the stored value), ensuring the exact deposited amount is returned regardless of the demanded amount.
 
 ## Security Properties
 
 ### Property 1: No value creation
 
-The balance equation guarantees that credits cannot exceed debits plus block reward plus the net swap flow. Fees are zero-sum within the swapClaimed term: `swapClaimed = counterpartyCredit + minerFee`.
+The balance equation guarantees that credits cannot exceed debits plus block reward plus the net cross-chain flow. Deposits reduce available balance; withdrawals increase it. The net is always zero across the complete deposit-receipt-withdrawal lifecycle.
 
-### Property 2: No double-fill
+### Property 2: No double-deposit
 
-Within a block, fills are tracked by `doubleSha256(JSON(order))` (not just nonce, since different makers can have the same nonce). Across blocks, SwapKey uniqueness in swap state (via insertion proofs) prevents the same lock from being created twice.
+DepositKey uniqueness is enforced by insertion proofs. A deposit with the same (demander, amountDemanded, nonce) tuple cannot be inserted twice.
 
-### Property 3: No stale execution
+### Property 3: No double-withdrawal
 
-Order expiry (`timelock > blockIndex`) prevents matchers from filling orders long after the maker intended them to expire. This is enforced at consensus -- invalid matches are rejected.
+Withdrawals delete the deposit entry. Once withdrawn, the DepositKey no longer exists in depositState. A second withdrawal attempt fails the deletion proof.
 
-### Property 4: Claim/refund mutual exclusion
+### Property 4: No over-withdrawal
 
-Claims require a settlement proof, which is only created during the lock phase. Refunds require `blockIndex > timelock`. If the swap is claimed before timeout, the SwapKey is deleted -- a subsequent refund fails the mutation proof (key no longer exists). If the swap times out and is refunded, the SwapKey is deleted -- a subsequent claim also fails.
+The stored `amountDeposited` must exactly match the declared `amountWithdrawn`. The state proof verifies this at consensus. An attacker cannot claim more than was deposited.
 
-### Property 5: Cross-chain atomicity
+### Property 5: No forged receipts
 
-Settlement on the nexus provides coordination. Locks on chains X and Y produce settlement entries `SettleKey(X, swapKeyA)` and `SettleKey(Y, swapKeyB)`. Both claims check the same settlement state. Either:
-- Both settlements exist → both parties can claim
-- Timeout → both parties can refund
-
-There is no state where one party claims and the other cannot. The timelock must match between orders (rule 5), ensuring both locks expire at the same block height.
+Receipt verification checks `parentHomestead.receiptState`. The `parentHomestead` is committed in the child block's proof-of-work hash. Fabricating a receipt would require controlling the parent chain's hashrate to produce a block with a forged `parentHomestead`.
 
 ### Property 6: Replay protection
 
 Each step uses Sparse Merkle proofs:
-- Lock: insertion proof (SwapKey must not exist) → prevents duplicate locks
-- Settle: insertion proof (SettleKey must not exist) → prevents duplicate settlements
-- Claim: mutation proof (SwapKey must exist, then delete) → prevents double-claims
-- Refund: mutation proof (SwapKey must exist, then delete) → prevents double-refunds
+- Deposit: insertion proof (DepositKey must not exist) -- prevents duplicate deposits
+- Receipt: insertion proof (ReceiptKey must not exist) -- prevents duplicate receipts
+- Withdrawal: deletion proof (DepositKey must exist, then delete) -- prevents double-withdrawal
 
-### Property 7: Settlement persistence
+Cross-chain replay is further prevented by `chainPath` -- each transaction declares the exact chain hierarchy path it targets.
 
-Settle state entries are never deleted. Once a settlement is recorded on the nexus, it persists permanently. This means child chains can always verify that a settlement occurred, regardless of how much later the claim is submitted.
+### Property 7: Withdrawer verification
 
-### Property 8: Same-chain rejection
-
-Orders where `sourceChain == destChain` are rejected (rule 3). Same-chain swaps are meaningless (just transfer directly) and would spam swap state.
+The receipt stores `CID(withdrawer.publicKey)`. On withdrawal, the child chain verifies that the withdrawer matches the receipt. This prevents an unauthorized party from claiming the deposited tokens.
 
 ## Miner Incentives
 
-Miners are incentivized to include exchange transactions through two mechanisms:
-
-1. **Claim-phase fee:** The miner who includes a claim transaction captures the full order fee via the swapClaimed excess. This is the primary incentive for the exchange protocol.
-
-2. **Transaction fee:** The explicit `body.fee` on any transaction (independent of order fees) compensates miners for inclusion. This applies to all transactions, including those containing matched orders.
-
-**Trade-off:** Lock-phase transactions produce no immediate order fee for the miner. The miner's incentive to include locks is the expectation of mining future claim blocks. In practice, miners who operate order books have a natural advantage: they control which orders to match and can immediately include claims in subsequent blocks.
-
-## Persistent On-Chain Order Book
-
-In addition to the instant matching protocol above (`matchedOrders`), the exchange supports a persistent on-chain order book where funds are escrowed at post time. This enables makers to post orders that persist across blocks and are filled later by matchers.
-
-### Order Lock State
-
-An 8th Sparse Merkle Tree in `LatticeState` tracks locked order funds:
-
-```
-orderLockState: SMT<OrderLockKey → uint64>
-
-OrderLockKey = maker || "/" || nonce
-```
-
-The value is the remaining locked amount (`sourceAmount + fee` at post time, decreasing with partial fills).
-
-### Post (lock funds)
-
-A `SignedOrder` in the transaction's `postOrders` field:
-
-1. Debits the maker's account by `sourceAmount + fee`
-2. Inserts `OrderLockKey(maker, nonce) → sourceAmount + fee` into `orderLockState`
-3. The insertion proof ensures the order hasn't been posted before
-
-**Validation:** Same as `matchedOrders` signature checks, plus: maker must be a signer, no same-chain orders, positive amounts, and `sourceAmount + fee` must fit in Int64.
-
-### Fill (convert lock to swap)
-
-A `MatchedOrder` in the transaction's `orderFills` field triggers the same derived actions as `matchedOrders` (swap locks, settlements, claims), plus:
-
-1. Releases `fillAmount + proportionalFee` from each maker's `orderLockState` entry
-2. If the remaining locked amount reaches 0, the entry is deleted (full fill)
-3. Otherwise, the entry is updated with the reduced amount (partial fill)
-
-The fill converts order-locked funds into swap-locked funds. The balance equation balances because `totalOrderReleased` offsets `totalSwapLocked`.
-
-Fill transactions may be signer-less (the signed orders provide authorization), but must have `fee == 0`.
-
-### Cancel (return funds)
-
-An `OrderCancellation` in the transaction's `cancelOrders` field:
-
-1. Credits the maker's account by the remaining locked `amount`
-2. Deletes `OrderLockKey(maker, orderNonce)` from `orderLockState`
-
-**Critical safety check:** The declared `amount` must exactly match the value stored in `orderLockState`. This is verified during the state proof -- a cancellation with an inflated amount is rejected at consensus.
-
-### Balance Conservation with Order Locks
-
-The extended balance equation:
-
-```
-totalCredits ≤ totalDebits + reward + totalFees + totalSwapClaimed - totalSwapLocked + totalOrderReleased - totalOrderLocked
-```
-
-| Phase | orderLocked | orderReleased | swapLocked | Debits | Credits | Net |
-|-------|-------------|---------------|------------|--------|---------|-----|
-| Post  | +lockAmt    | 0             | 0          | +lockAmt | 0     | 0   |
-| Fill  | 0           | +releaseAmt   | +releaseAmt | 0     | 0       | 0   |
-| Cancel | 0          | +cancelAmt    | 0          | 0      | +cancelAmt | 0 |
-
-Every phase is zero-sum. No tokens are created or destroyed.
+Miners are incentivized to include cross-chain transfer transactions through the explicit `body.fee` on each transaction. Receipt transactions are particularly profitable because they require a signer (the withdrawer) who pays fees for the parent-chain account transfer.

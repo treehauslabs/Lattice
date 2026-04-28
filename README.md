@@ -44,7 +44,7 @@ Lattice eliminates both problems:
 | **Cosmos** | Per-zone validators | IBC + relayers | Unlimited, fragmented security |
 | **Polkadot** | Shared via relay chain | XCMP | Limited parachain slots |
 | **Avalanche** | Per-subnet validators | Warp messaging | Unlimited, fragmented security |
-| **Lattice** | Nested merged mining | Merkle proofs, no bridges | Unlimited, shared security |
+| **Lattice** | Nested merged mining | Deposit/receipt Merkle proofs, no bridges | Unlimited, shared security |
 
 ---
 
@@ -116,7 +116,7 @@ Every `ChainLevel` owns a `ChainState` actor that manages block metadata, fork t
 
 **Three-phase state model.** Each block carries `parentHomestead` (parent chain's state), `homestead` (confirmed state entering the block), and `frontier` (state after applying transactions). This is what makes trustless cross-chain verification possible without querying another chain at validation time.
 
-**Six partitioned sub-states.** World state is split into six independent Sparse Merkle Trees (accounts, general KV, deposits, receipts, peers, genesis blocks). Account state also tracks per-signer nonces via `_nonce_<prefix>` keys in the same trie. All six are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
+**Five partitioned sub-states.** World state is split into five independent Sparse Merkle Trees: accounts, general key-value, deposits, receipts, and genesis blocks. Account state also tracks per-signer nonces via `_nonce_<prefix>` keys in the same trie. All five are proved and updated concurrently via Swift `async let`. Light clients only need proofs for the sub-state they care about.
 
 **Ref-counted state diffs.** Every `proveAndUpdateState` returns a `StateDiff` — reference-counted maps of created and replaced CIDs. The diff is threaded through the entire validation pipeline (`validateFrontierState` → `validateNexus` → `processBlockHeader`) so the node layer can capture it without re-computing proofs. `diffCIDs(old:new:)` walks only materialized nodes on modified paths — O(log n) per modified key.
 
@@ -141,17 +141,17 @@ Block arrives
 
 ### Cross-chain value transfer
 
-Cross-chain exchange supports two modes:
+Value moves between parent and child chains through a three-phase **deposit/receipt/withdrawal** protocol verified entirely by Merkle proofs:
 
-**Instant matching** — A matcher pairs two crossing orders in the same transaction. Funds are debited, locked in `SwapState`, settled on the nexus, and claimable by counterparties. Three phases: lock, settle, claim/refund.
+1. **Deposit** (child chain): A user locks tokens on the child chain via a `DepositAction`, declaring a demand (recipient and amount on the parent). The deposit is recorded in the child's `depositState`.
 
-**Persistent order book** — Makers post signed orders on-chain. Funds are escrowed in `OrderLockState` at post time. Orders persist across blocks until filled or cancelled. Fills convert order locks into swap locks, entering the same settle/claim flow. Cancellations return the exact locked amount to the maker.
+2. **Receipt** (parent chain): The parent verifies the deposit exists by checking the child's state root (committed in the child block embedded in the parent block). A `ReceiptAction` records the receipt in the parent's `receiptState` and transfers the demanded amount between accounts on the parent.
 
-Both modes share the same settlement and claim infrastructure. Settlement is recorded on the **lowest common ancestor (LCA)** of the two source chains — not always the nexus. This means swaps between tokens on the same child chain settle on that child chain, reducing nexus load. Claim verification checks both the chain's own settle state and its parent's, so claims work regardless of where settlement was placed.
+3. **Withdrawal** (child chain): The child verifies a receipt exists on the parent by checking `parentHomestead.receiptState`. A `WithdrawalAction` releases the original deposited tokens to the withdrawer. The deposit entry is deleted, preventing double-withdrawal.
+
+At no point does any trusted third party hold custody of tokens. The verification is purely cryptographic: Sparse Merkle proofs against state roots committed in proof-of-work hashes.
 
 Cross-chain replay protection is enforced via `chainPath` — each transaction declares the exact chain hierarchy path it targets (e.g., `["Nexus", "Payments"]`). Transactions are rejected if the `chainPath` doesn't match the validating chain.
-
-Full formal specification: [CROSS_CHAIN_PROTOCOL.md](CROSS_CHAIN_PROTOCOL.md)
 
 ---
 
@@ -201,12 +201,11 @@ Full analysis including incentive dynamics, failure modes, and comparison to eve
 
 ```
 Sources/Lattice/
-├── Lattice/          Lattice actor, ChainState, ChainLevel
-├── Block/            Block structure, validation, ChainSpec
+├── Lattice/          Lattice actor, ChainState, ChainLevel, Genesis
+├── Block/            Block structure, validation, BlockBuilder, ChainSpec
 ├── Transaction/      Transaction, TransactionBody, signatures
-├── Actions/          Account, Swap, SwapClaim, Settle, Genesis, Peer, Order, Action
-├── Exchange/         SwapOrder, SignedOrder, MatchedOrder, OrderCancellation
-├── State/            LatticeState + 8 sub-state Sparse Merkle Trees
+├── Actions/          Account, Action, Deposit, Receipt, Withdrawal, Genesis
+├── State/            LatticeState + 5 sub-state Sparse Merkle Trees
 ├── Core/             PublicKey type
 ├── CryptoUtils.swift secp256k1 ECDSA, SHA-256, key generation
 └── UInt256+Extensions.swift
@@ -219,7 +218,7 @@ Sources/Lattice/
 | Hash | SHA-256 | Block hashes, Merkle trees, difficulty, addresses |
 | Signature | secp256k1 ECDSA | Transaction authorization (33-byte compressed keys, 64-byte compact signatures) |
 | Content addressing | CID (DAG-CBOR + SHA-256) | All data structure references |
-| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 8 sub-states |
+| State proofs | Sparse Merkle Tree | Inclusion/exclusion proofs for all 5 sub-states |
 
 ## Dependencies
 
@@ -227,10 +226,11 @@ Sources/Lattice/
 |---|---|
 | [cashew](https://github.com/treehauslabs/cashew) | Content-addressed Merkle data structures (IPLD, Sparse Merkle Trees, CIDs, Volumes) |
 | [swift-crypto](https://github.com/apple/swift-crypto) | SHA-256 |
-| [P256K](https://github.com/nicklama/P256K) | secp256k1 ECDSA signatures |
+| [swift-secp256k1](https://github.com/21-DOT-DEV/swift-secp256k1) | secp256k1 ECDSA signatures |
 | [UInt256](https://github.com/treehauslabs/UInt256) | 256-bit integers for difficulty targets |
 | [swift-cid](https://github.com/swift-libp2p/swift-cid) | Content Identifier encoding |
 | [CollectionConcurrencyKit](https://github.com/JohnSundell/CollectionConcurrencyKit) | Concurrent collection operations |
+| [JXKit](https://github.com/jectivex/JXKit) | JavaScript evaluation for transaction/action filters |
 
 ---
 
@@ -240,26 +240,21 @@ Sources/Lattice/
 
 - [x] Block validation (genesis, nexus, child chain)
 - [x] Three-phase state model (parentHomestead / homestead / frontier)
-- [x] Eight partitioned Sparse Merkle Tree sub-states with concurrent updates
-- [x] Cross-chain atomic swap/settle protocol
-- [x] Persistent on-chain order book with lock-at-post-time escrow
+- [x] Five partitioned Sparse Merkle Tree sub-states (accounts, general, deposits, receipts, genesis) with concurrent updates
+- [x] Cross-chain deposit/receipt/withdrawal protocol (trustless parent-child transfers)
 - [x] Nakamoto fork choice with parent chain anchoring
 - [x] Reorganization propagation through chain hierarchy
-- [x] Configurable ChainSpec with halving schedule and difficulty adjustment
+- [x] Configurable ChainSpec with halving schedule and epoch-based difficulty adjustment
 - [x] secp256k1 ECDSA transaction signing and verification
-- [x] Sequential per-signer-group nonces with cross-chain replay protection (chainPath)
+- [x] Per-signer nonce tracking merged into AccountState trie
+- [x] Cross-chain replay protection via chainPath
 - [x] Stateless block verification (nodes lazy-load state via Fetcher protocol)
 - [x] JavaScript transaction/action filters
-- [x] libp2p networking, peer discovery, block gossip
 - [x] Volume-based data locality hints at Block and Transaction boundaries
-- [x] Persistent storage backend via Fetcher protocol
-- [x] Content-addressed data retrieval
-- [x] Fast sync via state snapshots
-- [x] Header-first sync for light clients
-- [x] Formal protocol specification
 - [x] StateDiff with ref-counted created/replaced CID tracking
 - [x] Validation pipeline threads StateDiff from frontier through to processBlockHeader
-- [x] Per-signer nonce tracking merged into AccountState trie
+- [x] Homestead continuity validation (anti-forgery for intermediate blocks)
+- [x] Formal protocol specification
 
 ### Next
 
@@ -270,10 +265,6 @@ Sources/Lattice/
 - [ ] Alternative consensus per chain (PoS, PoA via ChainSpec extension)
 - [ ] On-chain governance for ChainSpec changes
 - [ ] EIP-1559-style fee market
-- [ ] Block explorer with multi-chain navigation
-- [ ] CLI node operator tools
-- [ ] Chain creator toolkit
-- [ ] Developer SDK
 
 ---
 

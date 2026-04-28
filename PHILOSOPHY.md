@@ -48,7 +48,7 @@ This design choice has several consequences:
 
 Each block carries three states rather than the typical two (before and after). This seemingly small addition is what enables the entire cross-chain verification system.
 
-- **parentHomestead** — A snapshot of the parent chain's state at the time this block was mined. For nexus blocks, this is empty. For child blocks, it contains the parent's confirmed state, including the parent's deposit state, receipt state, and settle state.
+- **parentHomestead** — A snapshot of the parent chain's state at the time this block was mined. For nexus blocks, this is empty. For child blocks, it contains the parent's confirmed state, including the parent's receipt state.
 
 - **homestead** — The chain's own confirmed state entering this block. Equals the `frontier` of the previous block (state continuity invariant). For genesis blocks, this is the empty state.
 
@@ -58,7 +58,7 @@ The critical property is that `parentHomestead` is committed in the child block'
 
 ## Partitioned State
 
-World state is split into six independent Sparse Merkle Trees:
+World state is split into five independent Sparse Merkle Trees:
 
 | Sub-state | Purpose |
 |---|---|
@@ -66,14 +66,13 @@ World state is split into six independent Sparse Merkle Trees:
 | `generalState` | Arbitrary key-value storage |
 | `depositState` | Pending cross-chain deposits |
 | `receiptState` | Cross-chain transfer receipts |
-| `peerState` | Network peer registry |
 | `genesisState` | Child chain genesis block references |
 
-Each sub-state is an independent Sparse Merkle Tree with its own root hash. The six roots are combined into a `LatticeState` composite. This partitioning has two benefits:
+Each sub-state is an independent Sparse Merkle Tree with its own root hash. The five roots are combined into a `LatticeState` composite. This partitioning has two benefits:
 
-**Concurrent updates.** When processing a block's transactions, all six sub-states can be proved and updated in parallel via Swift `async let`. Account balance changes don't block peer state changes. This is a direct mapping of the data model onto Swift's structured concurrency.
+**Concurrent updates.** When processing a block's transactions, all five sub-states can be proved and updated in parallel via Swift `async let`. Account balance changes don't block deposit state changes. This is a direct mapping of the data model onto Swift's structured concurrency.
 
-**Selective verification.** A light client that only cares about account balances can request Sparse Merkle proofs against `accountState` without downloading proofs for the other five sub-states. A node tracking cross-chain deposits only needs proofs against `depositState` and `receiptState`.
+**Selective verification.** A light client that only cares about account balances can request Sparse Merkle proofs against `accountState` without downloading proofs for the other four sub-states. A node tracking cross-chain deposits only needs proofs against `depositState` and `receiptState`.
 
 ## Sparse Merkle Proofs as the Universal Verification Primitive
 
@@ -81,12 +80,11 @@ Lattice uses Sparse Merkle Trees rather than Patricia tries (Ethereum) or UTXO c
 
 Exclusion proofs are essential for several protocol operations:
 
-- **Swap lock insertion**: Proving a swap key doesn't already exist prevents double-locking.
-- **Settlement insertion**: Proving a settle key doesn't exist prevents duplicate settlements.
+- **Deposit insertion**: Proving a deposit key doesn't already exist prevents double-deposits.
+- **Receipt insertion**: Proving a receipt key doesn't exist prevents duplicate receipts.
 - **Genesis action**: Proving a child chain directory doesn't exist prevents overwriting an existing chain.
-- **Order post**: Proving an order lock key doesn't exist prevents duplicate order posts.
 
-Every state transition in Lattice is proved against the current state before it is applied. The pattern is consistent across all six sub-states: generate a proof that the current value matches expectations, then apply the mutation. This means block validation is a pure function of the block data and the current state proofs — no side effects, no external queries, no consensus-layer assumptions.
+Every state transition in Lattice is proved against the current state before it is applied. The pattern is consistent across all five sub-states: generate a proof that the current value matches expectations, then apply the mutation. This means block validation is a pure function of the block data and the current state proofs — no side effects, no external queries, no consensus-layer assumptions.
 
 ## Actor-Based Consensus
 
@@ -122,32 +120,6 @@ The deposit/receipt/withdrawal protocol enables trustless value movement between
 3. **Withdrawal** (child chain): The child chain verifies that a receipt exists on the parent by checking `parentHomestead.receiptState`. The original deposited tokens are released to the withdrawer.
 
 At no point does any trusted third party hold custody of tokens. The verification is purely cryptographic: Sparse Merkle proofs against state roots that are committed in proof-of-work hashes.
-
-## Cross-Chain Atomic Swaps
-
-For exchanging value between two chains that don't have a direct parent-child relationship, Lattice implements a three-phase atomic swap protocol:
-
-1. **Lock**: Tokens are locked in swap state on each maker's source chain. Account balances are debited and tokens become claimable by the counterparty or refundable by the sender after timeout.
-
-2. **Settle**: A settlement record is written on the lowest common ancestor (LCA) of the two source chains. The LCA optimization means swaps between sibling chains settle on their parent, not necessarily the nexus, reducing nexus load.
-
-3. **Claim/Refund**: Each counterparty claims the other's locked tokens by proving settlement exists. If the swap times out, the original sender refunds by proving the timelock has expired.
-
-The claim and refund windows are mutually exclusive (claims require settlement proof before timeout; refunds require timeout to have passed), so a swap cannot be both claimed and refunded.
-
-Fees are fully refundable — they are locked alongside the fill amount in swap state, so a maker whose swap times out gets back everything they locked, including the fee.
-
-## Persistent On-Chain Order Book
-
-Beyond instant matching (where both sides must appear in the same transaction), Lattice supports a persistent order book:
-
-- **Post**: A maker submits a signed order. Tokens are escrowed in `orderLockState` at post time, not at fill time. This means the maker's commitment is binding and verifiable on-chain.
-
-- **Fill**: A matcher pairs two previously posted orders. The locked amounts are released from `orderLockState` and converted into swap locks, entering the same settle/claim flow as instant matches.
-
-- **Cancel**: The maker signs a cancellation. The locked amount is returned after verifying the declared amount matches state (preventing cancel inflation attacks).
-
-The "lock at post time" design means the order book provides real price discovery: every posted order is backed by escrowed funds, so the book cannot be polluted with unbacked orders.
 
 ## JavaScript Filters: Programmable Chain Policy
 
@@ -187,9 +159,9 @@ Several principles guided the design decisions throughout Lattice:
 
 **Verify everything locally.** No validation step requires querying an external system. Block validation is a pure function of the block data and Sparse Merkle proofs. Cross-chain verification uses committed state roots, not external oracles.
 
-**Derive, don't declare.** Matched orders automatically derive the swap actions, settle actions, and account actions they imply. The transaction doesn't redundantly declare what the protocol can compute. This reduces the surface for inconsistency and simplifies validation.
+**Derive, don't declare.** Receipt actions automatically derive the account actions they imply (debit withdrawer, credit demander). The transaction doesn't redundantly declare what the protocol can compute. This reduces the surface for inconsistency and simplifies validation.
 
-**Make the common case fast.** Six independent sub-state trees update concurrently. Fork choice results are cached and invalidated incrementally. Main chain timestamps are indexed for fast difficulty calculation without fetcher round-trips.
+**Make the common case fast.** Five independent sub-state trees update concurrently. Fork choice results are cached and invalidated incrementally. Main chain timestamps are indexed for fast difficulty calculation without fetcher round-trips.
 
 **Fail early, fail cheaply.** Validation checks are ordered from cheapest to most expensive. Structural checks (timestamps, index continuity, difficulty) happen before signature verification, which happens before state proof generation. A malformed block is rejected in microseconds, not milliseconds.
 
