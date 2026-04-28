@@ -77,12 +77,12 @@ final class DoubleSpendTests: XCTestCase {
         let body1 = TransactionBody(
             accountActions: [AccountAction(owner: "alice", delta: Int64(50) - Int64(100))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
+            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
         let body2 = TransactionBody(
             accountActions: [AccountAction(owner: "alice", delta: -Int64(50))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
+            receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 1, nonce: 42
         )
         let prefix1 = AccountStateHeader.signerPrefix(body1)
         let prefix2 = AccountStateHeader.signerPrefix(body2)
@@ -93,12 +93,12 @@ final class DoubleSpendTests: XCTestCase {
     func testDifferentSignersSameNonceNotBlocked() {
         let body1 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: ["alice"], fee: 0, nonce: 1
         )
         let body2 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: ["bob"], fee: 0, nonce: 1
         )
         XCTAssertNotEqual(
@@ -118,7 +118,7 @@ final class SignatureForgeryTests: XCTestCase {
         let kp = CryptoUtils.generateKeyPair()
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID],
             fee: 0, nonce: 1
         )
@@ -133,7 +133,7 @@ final class SignatureForgeryTests: XCTestCase {
         let signerCID = HeaderImpl<PublicKey>(node: PublicKey(key: kp2.publicKey)).rawCID
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [signerCID], fee: 0, nonce: 1
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
@@ -147,7 +147,7 @@ final class SignatureForgeryTests: XCTestCase {
         let kp = CryptoUtils.generateKeyPair()
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [HeaderImpl<PublicKey>(node: PublicKey(key: kp.publicKey)).rawCID],
             fee: 0, nonce: 1
         )
@@ -328,12 +328,12 @@ final class FilterBypassTests: XCTestCase {
         )
         let cheapTx = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [], fee: 50, nonce: 1
         )
         let expensiveTx = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [], fee: 200, nonce: 2
         )
         XCTAssertFalse(cheapTx.verifyFilters(spec: feeSpec), "Below minimum fee must be rejected")
@@ -368,7 +368,7 @@ final class FilterBypassTests: XCTestCase {
         )
         let cheapTx = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [], fee: 10, nonce: 1
         )
         XCTAssertTrue(cheapTx.verifyFilters(spec: childSpec), "Child filter alone accepts")

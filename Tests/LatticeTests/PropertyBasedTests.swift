@@ -377,7 +377,6 @@ final class BalanceConservationPropertyTests: XCTestCase {
                 actions: [],
                 depositActions: [],
                 genesisActions: [],
-                peerActions: [],
                 receiptActions: [],
                 withdrawalActions: [],
                 signers: [],
@@ -392,7 +391,6 @@ final class BalanceConservationPropertyTests: XCTestCase {
                 actions: [],
                 depositActions: [],
                 genesisActions: [],
-                peerActions: [],
                 receiptActions: [],
                 withdrawalActions: [],
                 signers: [owner],
@@ -417,7 +415,6 @@ final class BalanceConservationPropertyTests: XCTestCase {
                 actions: [],
                 depositActions: [],
                 genesisActions: [],
-                peerActions: [],
                 receiptActions: [],
                 withdrawalActions: [],
                 signers: [],
@@ -590,7 +587,6 @@ final class StateDeltaPropertyTests: XCTestCase {
             actions: kvActions,
             depositActions: [],
             genesisActions: [],
-            peerActions: [],
             receiptActions: [],
             withdrawalActions: [],
             signers: [],
@@ -678,23 +674,22 @@ final class BlockStructurePropertyTests: XCTestCase {
         XCTAssertEqual(state1.rawCID, state2.rawCID)
     }
 
-    // Property: LatticeState has exactly 6 properties
+    // Property: LatticeState has exactly 5 properties
     func testLatticeStatePropertyCount() {
         let state = LatticeState.emptyState()
-        XCTAssertEqual(state.properties().count, 6)
+        XCTAssertEqual(state.properties().count, 5)
     }
 
-    // Property: All 6 sub-state property names are distinct
+    // Property: All 5 sub-state property names are distinct
     func testSubStatePropertyNamesDistinct() {
         let names = [
             ACCOUNT_STATE_PROPERTY,
             GENERAL_STATE_PROPERTY,
             DEPOSIT_STATE_PROPERTY,
-            PEER_STATE_PROPERTY,
             GENESIS_STATE_PROPERTY,
             RECEIPT_STATE_PROPERTY,
         ]
-        XCTAssertEqual(Set(names).count, 6)
+        XCTAssertEqual(Set(names).count, 5)
     }
 
     // Property: Block has exactly 7 addressable properties

@@ -32,7 +32,7 @@ private func genesisWithPremine(
     let body = TransactionBody(
         accountActions: [AccountAction(owner: ownerAddr, delta: Int64(s.premineAmount()))],
         actions: [], depositActions: [], genesisActions: [],
-        peerActions: [], receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0
+        receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0
     )
     return try await BlockBuilder.buildGenesis(
         spec: s, transactions: [sign(body, owner)],
@@ -66,7 +66,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 1
         )
         let spend2 = TransactionBody(
@@ -75,7 +75,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: charlieAddr, delta: Int64(premine + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 2
         )
 
@@ -109,7 +109,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 1
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -123,7 +123,7 @@ final class DoubleSpendAdversarialTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premine + reward + 1 + reward) - Int64(premine + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 2
         )
 
@@ -159,7 +159,7 @@ final class SignatureSecurityTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
@@ -196,7 +196,7 @@ final class SignatureSecurityTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: realAddr, delta: Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [realAddr], fee: 0, nonce: 0
         )
         let bodyHeader = HeaderImpl<TransactionBody>(node: body)
@@ -224,7 +224,7 @@ final class SignatureSecurityTests: XCTestCase {
 
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [], fee: 0, nonce: 0
         )
         let tx = Transaction(signatures: [:], body: HeaderImpl<TransactionBody>(node: body))
@@ -256,7 +256,7 @@ final class SignatureSecurityTests: XCTestCase {
                 AccountAction(owner: thiefAddr, delta: Int64(premine + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [thiefAddr], fee: 0, nonce: 0
         )
         let tx = sign(body, thief)
@@ -290,7 +290,7 @@ final class BalanceOverflowTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + 1))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let block = try await BlockBuilder.buildBlock(
@@ -312,7 +312,7 @@ final class BalanceOverflowTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine + 1))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [kpAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [kpAddr], fee: 0, nonce: 0
         )
 
         let genesis = try await BlockBuilder.buildGenesis(
@@ -356,7 +356,7 @@ final class CrossChainSecurityTests: XCTestCase {
                 DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 100, amountDeposited: 100),
                 DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 100, amountDeposited: 100)
             ],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
 
@@ -389,7 +389,7 @@ final class CrossChainSecurityTests: XCTestCase {
             depositActions: [
                 DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 0, amountDeposited: 0)
             ],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
 
@@ -435,7 +435,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
             let body = TransactionBody(
                 accountActions: [AccountAction(owner: minerAddr, delta: Int64(newBalance) - Int64(minerBalance))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [minerAddr], fee: 0, nonce: UInt64(i)
             )
             let block = try await BlockBuilder.buildBlock(
@@ -474,7 +474,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
                 AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [payerAddr], fee: fee, nonce: 1
         )
         let block = try await BlockBuilder.buildBlock(
@@ -534,7 +534,7 @@ final class EconomicInvariantAdversarialTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: ownerAddr, delta: Int64(premine))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [ownerAddr], fee: 0, nonce: 0
         )
         let tx = sign(body, kp)
 
@@ -728,7 +728,7 @@ final class BlockLimitTests: XCTestCase {
             let kp = CryptoUtils.generateKeyPair()
             let body = TransactionBody(
                 accountActions: [], actions: [], depositActions: [],
-                genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+                genesisActions: [], receiptActions: [], withdrawalActions: [],
                 signers: [], fee: 0, nonce: i
             )
             txs.append(sign(body, kp))

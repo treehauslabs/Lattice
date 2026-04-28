@@ -266,7 +266,7 @@ final class StateDiffTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: owner, delta: 100)],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [owner], fee: 0, nonce: 0
         )
 
@@ -301,7 +301,6 @@ final class StateDiffTests: XCTestCase {
             allActions: [Action(key: "foo", oldValue: nil, newValue: "bar")],
             allDepositActions: [],
             allGenesisActions: [],
-            allPeerActions: [],
             allReceiptActions: [],
             allWithdrawalActions: [],
             transactionBodies: [],
@@ -324,7 +323,6 @@ final class StateDiffTests: XCTestCase {
             allActions: [],
             allDepositActions: [],
             allGenesisActions: [],
-            allPeerActions: [],
             allReceiptActions: [],
             allWithdrawalActions: [],
             transactionBodies: [],
@@ -413,35 +411,6 @@ final class StateDiffTests: XCTestCase {
         let diff = diffCIDs(old: a, new: b)
         XCTAssertTrue(diff.replaced.isEmpty)
         XCTAssertTrue(diff.created.isEmpty)
-    }
-
-    // MARK: - PeerState insert/update/delete cycle
-
-    func testPeerStateCycleDiffs() async throws {
-        let fetcher = makeFetcher()
-        let empty = PeerStateHeader(node: PeerState())
-        try empty.storeRecursively(storer: fetcher)
-
-        let insertAction = PeerAction(owner: "peer1", IpAddress: "1.2.3.4", refreshed: 1000, fullNode: true, type: .insert)
-        let (afterInsert, insertDiff) = try await empty.proveAndUpdateState(
-            allPeerActions: [insertAction], fetcher: fetcher
-        )
-        XCTAssertFalse(insertDiff.created.isEmpty)
-        try afterInsert.storeRecursively(storer: fetcher)
-
-        let updateAction = PeerAction(owner: "peer1", IpAddress: "5.6.7.8", refreshed: 2000, fullNode: false, type: .update)
-        let (afterUpdate, updateDiff) = try await afterInsert.proveAndUpdateState(
-            allPeerActions: [updateAction], fetcher: fetcher
-        )
-        XCTAssertFalse(updateDiff.replaced.isEmpty)
-        XCTAssertFalse(updateDiff.created.isEmpty)
-        try afterUpdate.storeRecursively(storer: fetcher)
-
-        let deleteAction = PeerAction(owner: "peer1", IpAddress: "", refreshed: 0, fullNode: false, type: .delete)
-        let (_, deleteDiff) = try await afterUpdate.proveAndUpdateState(
-            allPeerActions: [deleteAction], fetcher: fetcher
-        )
-        XCTAssertFalse(deleteDiff.replaced.isEmpty)
     }
 
     // MARK: - Large trie single-key mutation (stress O(log n))

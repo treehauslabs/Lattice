@@ -122,7 +122,7 @@ final class ContinuityIntegrationTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "B", block: bGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["B": bFake],
@@ -188,7 +188,7 @@ final class ContinuityIntegrationTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(bSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: now - 50_000, difficulty: difficulty, fetcher: fetcher
@@ -219,7 +219,7 @@ final class ContinuityIntegrationTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "B", block: bGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["B": bSkipChild],
@@ -296,7 +296,7 @@ final class ContinuityIntegrationTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(bSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: now - 50_000, difficulty: difficulty, fetcher: fetcher
@@ -310,7 +310,7 @@ final class ContinuityIntegrationTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(bSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: now - 49_000, difficulty: difficulty, fetcher: fetcher
@@ -363,7 +363,7 @@ final class ContinuityIntegrationTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(bSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1
             ), kp)],
             timestamp: now - 30_000, difficulty: difficulty, fetcher: fetcher

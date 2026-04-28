@@ -205,7 +205,6 @@ public struct BlockBuilder {
         let allActions = transactionBodies.flatMap { $0.actions }
         let allDepositActions = transactionBodies.flatMap { $0.depositActions }
         let allGenesisActions = transactionBodies.flatMap { $0.genesisActions }
-        let allPeerActions = transactionBodies.flatMap { $0.peerActions }
         let allReceiptActions = transactionBodies.flatMap { $0.receiptActions }
         let allWithdrawalActions = transactionBodies.flatMap { $0.withdrawalActions }
 
@@ -214,7 +213,6 @@ public struct BlockBuilder {
             allActions: allActions,
             allDepositActions: allDepositActions,
             allGenesisActions: allGenesisActions,
-            allPeerActions: allPeerActions,
             allReceiptActions: allReceiptActions,
             allWithdrawalActions: allWithdrawalActions,
             transactionBodies: transactionBodies,

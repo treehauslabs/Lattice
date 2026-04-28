@@ -32,7 +32,7 @@ private func premineGenesis(
     let body = TransactionBody(
         accountActions: [AccountAction(owner: addr, delta: Int64(spec.premineAmount()))],
         actions: [], depositActions: [], genesisActions: [],
-        peerActions: [], receiptActions: [], withdrawalActions: [], signers: [addr], fee: 0, nonce: 0
+        receiptActions: [], withdrawalActions: [], signers: [addr], fee: 0, nonce: 0
     )
     return try await BlockBuilder.buildGenesis(
         spec: spec, transactions: [tx(body, kp)],
@@ -71,7 +71,7 @@ final class DoubleClaimTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - amount + cr) - Int64(premine))],
             actions: [],
             depositActions: [childSwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
@@ -82,7 +82,7 @@ final class DoubleClaimTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: amount, directory: "Child")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -95,7 +95,7 @@ final class DoubleClaimTests: XCTestCase {
         let c1Body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(bal1 + amount + cr) - Int64(bal1))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: amount, amountWithdrawn: amount)],
             signers: [kpAddr], fee: 0, nonce: 2
         )
@@ -110,7 +110,7 @@ final class DoubleClaimTests: XCTestCase {
         let c2Body = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(bal2 + amount + cr) - Int64(bal2))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: amount, amountWithdrawn: amount)],
             signers: [kpAddr], fee: 0, nonce: 3
         )
@@ -160,7 +160,7 @@ final class PhantomSettleTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 99, demander: kpAddr, amountDemanded: 1000, directory: "Child")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -175,7 +175,7 @@ final class PhantomSettleTests: XCTestCase {
         let claimBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine + 1000 + cr) - Int64(premine))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [WithdrawalAction(withdrawer: kpAddr, nonce: 99, demander: kpAddr, amountDemanded: 1000, amountWithdrawn: 1000)],
             signers: [kpAddr], fee: 0, nonce: 1
         )
@@ -239,7 +239,7 @@ final class CrossChainReplayTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premineA - amount + crA) - Int64(premineA))],
             actions: [],
             depositActions: [childASwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let _ = try await BlockBuilder.buildBlock(
@@ -249,7 +249,7 @@ final class CrossChainReplayTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nr))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: amount, directory: "ChildA")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -263,7 +263,7 @@ final class CrossChainReplayTests: XCTestCase {
         let replayBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premineB + amount + crB) - Int64(premineB))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: amount, amountWithdrawn: amount)],
             signers: [kpAddr], fee: 0, nonce: 1
         )
@@ -422,7 +422,7 @@ final class TransactionFilterBlockTests: XCTestCase {
         let lowFeeBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let lowFeeBlock = try await BlockBuilder.buildBlock(
@@ -436,7 +436,7 @@ final class TransactionFilterBlockTests: XCTestCase {
         let okFeeBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 10, nonce: 0
         )
         let okFeeBlock = try await BlockBuilder.buildBlock(
@@ -472,7 +472,7 @@ final class GeneralStateBlockTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [Action(key: "greeting", oldValue: nil, newValue: "hello")],
             depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -488,7 +488,7 @@ final class GeneralStateBlockTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [Action(key: "greeting", oldValue: "hello", newValue: "world")],
             depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let block2 = try await BlockBuilder.buildBlock(
@@ -503,7 +503,7 @@ final class GeneralStateBlockTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward * 3) - Int64(reward * 2))],
             actions: [Action(key: "greeting", oldValue: "world", newValue: nil)],
             depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 2
         )
         let block3 = try await BlockBuilder.buildBlock(
@@ -530,7 +530,7 @@ final class GeneralStateBlockTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [Action(key: "key1", oldValue: nil, newValue: "value1")],
             depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -543,7 +543,7 @@ final class GeneralStateBlockTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
             actions: [Action(key: "key1", oldValue: "WRONG", newValue: "value2")],
             depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
 
@@ -556,71 +556,5 @@ final class GeneralStateBlockTests: XCTestCase {
         } catch {
             // GeneralState.updateState checks oldValue matches actual
         }
-    }
-}
-
-// ============================================================================
-// MARK: - 7. Peer State Mutations Through Block Lifecycle
-// ============================================================================
-
-@MainActor
-final class PeerStateBlockTests: XCTestCase {
-
-    func testInsertAndUpdatePeerAction() async throws {
-        let fetcher = f()
-        let base = now() - 20_000
-        let kp = CryptoUtils.generateKeyPair()
-        let kpAddr = id(kp.publicKey)
-        let spec = s(premine: 0)
-        let reward = spec.rewardAtBlock(0)
-
-        let genesis = try await BlockBuilder.buildGenesis(
-            spec: spec, timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
-        )
-
-        // Block 1: Register a peer
-        let insertBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
-            actions: [],
-            depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
-            signers: [kpAddr], fee: 0, nonce: 0
-        )
-        let block1 = try await BlockBuilder.buildBlock(
-            previous: genesis, transactions: [tx(insertBody, kp)],
-            timestamp: base + 1000, difficulty: UInt256(1000), nonce: 1, fetcher: fetcher
-        )
-        let v1 = try await block1.validateNexus(fetcher: fetcher).0
-        XCTAssertTrue(v1)
-
-        // Block 2: Update the peer
-        let updateBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward + reward) - Int64(reward))],
-            actions: [],
-            depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
-            signers: [kpAddr], fee: 0, nonce: 1
-        )
-        let block2 = try await BlockBuilder.buildBlock(
-            previous: block1, transactions: [tx(updateBody, kp)],
-            timestamp: base + 2000, difficulty: UInt256(1000), nonce: 2, fetcher: fetcher
-        )
-        let v2 = try await block2.validateNexus(fetcher: fetcher).0
-        XCTAssertTrue(v2)
-
-        // Block 3: Delete the peer
-        let deleteBody = TransactionBody(
-            accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward * 3) - Int64(reward * 2))],
-            actions: [],
-            depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
-            signers: [kpAddr], fee: 0, nonce: 2
-        )
-        let block3 = try await BlockBuilder.buildBlock(
-            previous: block2, transactions: [tx(deleteBody, kp)],
-            timestamp: base + 3000, difficulty: UInt256(1000), nonce: 3, fetcher: fetcher
-        )
-        let v3 = try await block3.validateNexus(fetcher: fetcher).0
-        XCTAssertTrue(v3)
     }
 }

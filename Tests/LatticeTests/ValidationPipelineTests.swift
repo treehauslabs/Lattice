@@ -250,7 +250,6 @@ final class SignatureVerificationTests: XCTestCase {
             actions: [],
             depositActions: [],
             genesisActions: [],
-            peerActions: [],
             receiptActions: [],
             withdrawalActions: [],
             signers: [publicKeyCID],
@@ -272,7 +271,6 @@ final class SignatureVerificationTests: XCTestCase {
             actions: [],
             depositActions: [],
             genesisActions: [],
-            peerActions: [],
             receiptActions: [],
             withdrawalActions: [],
             signers: [wrongSignerCID],
@@ -293,12 +291,12 @@ final class TransactionNonceScopingTests: XCTestCase {
     func testSameNonceDifferentSignersProduceDifferentKeys() {
         let body1 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
         let body2 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["bob"], fee: 0, nonce: 42
         )
 
@@ -310,12 +308,12 @@ final class TransactionNonceScopingTests: XCTestCase {
     func testSameSignerSameNonceProducesSameKey() {
         let body1 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
         let body2 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["alice"], fee: 0, nonce: 42
         )
 
@@ -327,12 +325,12 @@ final class TransactionNonceScopingTests: XCTestCase {
     func testMultipleSignersOrderIndependent() {
         let body1 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["alice", "bob"], fee: 0, nonce: 1
         )
         let body2 = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: ["bob", "alice"], fee: 0, nonce: 1
         )
 
@@ -526,7 +524,7 @@ final class JavaScriptFilterTests: XCTestCase {
     func testTransactionFilterAccepts() {
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { return true; }"
@@ -536,7 +534,7 @@ final class JavaScriptFilterTests: XCTestCase {
     func testTransactionFilterRejects() {
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { return false; }"
@@ -546,12 +544,12 @@ final class JavaScriptFilterTests: XCTestCase {
     func testTransactionFilterCanInspectFee() {
         let lowFee = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 5, nonce: 1
         )
         let highFee = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 100, nonce: 1
         )
         let filter = "function transactionFilter(txJSON) { var tx = JSON.parse(txJSON); return tx.fee >= 50; }"
@@ -582,7 +580,7 @@ final class JavaScriptFilterTests: XCTestCase {
     func testInvalidFilterReturnsFalse() {
         let body = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 0, nonce: 1
         )
         XCTAssertFalse(body.verifyFilter("this is not valid javascript that defines transactionFilter"))
@@ -600,12 +598,12 @@ final class JavaScriptFilterTests: XCTestCase {
         )
         let lowFeeBody = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 5, nonce: 1
         )
         let highFeeBody = TransactionBody(
             accountActions: [], actions: [], depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [], withdrawalActions: [], signers: [], fee: 50, nonce: 1
         )
         XCTAssertFalse(lowFeeBody.verifyFilters(spec: spec))

@@ -110,7 +110,7 @@ final class HomesteadContinuityTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
@@ -163,7 +163,7 @@ final class HomesteadContinuityTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -175,7 +175,7 @@ final class HomesteadContinuityTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             parentChainBlock: nexusBlock1,
@@ -218,7 +218,7 @@ final class HomesteadContinuityTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -230,7 +230,7 @@ final class HomesteadContinuityTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             parentChainBlock: nexusBlock1,
@@ -243,7 +243,7 @@ final class HomesteadContinuityTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1
             ), kp)],
             timestamp: ts2, difficulty: difficulty, fetcher: fetcher
@@ -410,7 +410,7 @@ final class HomesteadContinuityTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -442,7 +442,7 @@ final class HomesteadContinuityTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": forgedChild],

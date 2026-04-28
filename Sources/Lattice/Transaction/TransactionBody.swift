@@ -8,7 +8,6 @@ public struct TransactionBody: Scalar {
     public let actions: [Action]
     public let depositActions: [DepositAction]
     public let genesisActions: [GenesisAction]
-    public let peerActions: [PeerAction]
     public let receiptActions: [ReceiptAction]
     public let withdrawalActions: [WithdrawalAction]
     public let signers: [String]
@@ -16,12 +15,11 @@ public struct TransactionBody: Scalar {
     public let nonce: UInt64
     public let chainPath: [String]
 
-    public init(accountActions: [AccountAction], actions: [Action], depositActions: [DepositAction], genesisActions: [GenesisAction], peerActions: [PeerAction], receiptActions: [ReceiptAction], withdrawalActions: [WithdrawalAction], signers: [String], fee: UInt64, nonce: UInt64, chainPath: [String] = []) {
+    public init(accountActions: [AccountAction], actions: [Action], depositActions: [DepositAction], genesisActions: [GenesisAction], receiptActions: [ReceiptAction], withdrawalActions: [WithdrawalAction], signers: [String], fee: UInt64, nonce: UInt64, chainPath: [String] = []) {
         self.accountActions = accountActions
         self.actions = actions
         self.depositActions = depositActions
         self.genesisActions = genesisActions
-        self.peerActions = peerActions
         self.receiptActions = receiptActions
         self.withdrawalActions = withdrawalActions
         self.signers = signers
@@ -87,7 +85,6 @@ public struct TransactionBody: Scalar {
         for a in actions { delta += a.stateDelta() }
         for a in depositActions { delta += a.stateDelta() }
         for a in genesisActions { delta += try a.stateDelta() }
-        for a in peerActions { delta += a.stateDelta() }
         for a in receiptActions { delta += a.stateDelta() }
         for a in withdrawalActions { delta += a.stateDelta() }
         return delta

@@ -32,7 +32,7 @@ private func premineGenesis(
     let body = TransactionBody(
         accountActions: [AccountAction(owner: addr, delta: Int64(spec.premineAmount()))],
         actions: [], depositActions: [], genesisActions: [],
-        peerActions: [], receiptActions: [], withdrawalActions: [], signers: [addr], fee: 0, nonce: 0
+        receiptActions: [], withdrawalActions: [], signers: [addr], fee: 0, nonce: 0
     )
     return try await BlockBuilder.buildGenesis(
         spec: spec, transactions: [tx(body, kp)],
@@ -296,7 +296,7 @@ final class ChildGenesisValidationTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], depositActions: [],
             genesisActions: [GenesisAction(directory: "Child", block: childGenesis)],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let block = try await BlockBuilder.buildBlock(
@@ -338,7 +338,7 @@ final class ClaimSecurityTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - 500 + childReward) - Int64(premine))],
             actions: [],
             depositActions: [childSwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
@@ -348,7 +348,7 @@ final class ClaimSecurityTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: 500, directory: "Child")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -362,7 +362,7 @@ final class ClaimSecurityTests: XCTestCase {
         let wrongNonceBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(balanceAfterSwap + 500 + childReward) - Int64(balanceAfterSwap))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [
                 WithdrawalAction(withdrawer: kpAddr, nonce: 99, demander: kpAddr, amountDemanded: 500, amountWithdrawn: 500)
             ],
@@ -410,7 +410,7 @@ final class ClaimSecurityTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(premine - 500 + childReward) - Int64(premine))],
             actions: [],
             depositActions: [childSwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
@@ -420,7 +420,7 @@ final class ClaimSecurityTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: 500, directory: "Child")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
@@ -434,7 +434,7 @@ final class ClaimSecurityTests: XCTestCase {
         let wrongAmountBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(balanceAfterSwap + 500 + childReward) - Int64(balanceAfterSwap))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [
                 WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: 9999, amountWithdrawn: 9999)
             ],
@@ -491,7 +491,7 @@ final class FeeOnlyEconomyTests: XCTestCase {
                 AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [payerAddr], fee: fee, nonce: 1
         )
         let block = try await BlockBuilder.buildBlock(
@@ -526,7 +526,7 @@ final class DustAttackTests: XCTestCase {
             spec: tinySpec, transactions: [tx(TransactionBody(
                 accountActions: [AccountAction(owner: funderAddr, delta: Int64(premine))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [], signers: [funderAddr], fee: 0, nonce: 0
+                receiptActions: [], withdrawalActions: [], signers: [funderAddr], fee: 0, nonce: 0
             ), funder)],
             timestamp: base, difficulty: UInt256(1000), fetcher: fetcher
         )
@@ -541,7 +541,7 @@ final class DustAttackTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: funderAddr, delta: Int64(reward))],
             actions: kvActions, depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [funderAddr], fee: 0, nonce: 1
         )
         let block = try await BlockBuilder.buildBlock(
@@ -620,7 +620,7 @@ final class CrossChainBalanceConservationTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(childPremine - swapAmount + childReward) - Int64(childPremine))],
             actions: [],
             depositActions: [childSwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let _ = try await BlockBuilder.buildBlock(
@@ -631,7 +631,7 @@ final class CrossChainBalanceConservationTests: XCTestCase {
 
         let settleBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(nexusReward))],
-            actions: [], depositActions: [], genesisActions: [], peerActions: [],
+            actions: [], depositActions: [], genesisActions: [],
             receiptActions: [ReceiptAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: swapAmount, directory: "Child")],
             withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0

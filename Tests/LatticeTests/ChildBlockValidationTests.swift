@@ -60,7 +60,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -73,7 +73,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0  // nonce 0 on child chain
             ), kp)],
             parentChainBlock: nexusBlock1,
@@ -122,7 +122,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -136,7 +136,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1
             ), kp)],
             timestamp: ts2, difficulty: difficulty, fetcher: fetcher
@@ -148,7 +148,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)]),
             difficulty: difficulty,
@@ -204,7 +204,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -217,7 +217,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)]),
             difficulty: difficulty,
@@ -273,7 +273,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -287,7 +287,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)]),
             difficulty: difficulty,
@@ -340,7 +340,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
@@ -353,7 +353,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1
             ), kp)],
             timestamp: ts2, difficulty: difficulty, fetcher: fetcher
@@ -412,7 +412,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             timestamp: ts1, difficulty: difficulty, fetcher: fetcher
@@ -475,7 +475,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [],
                 genesisActions: [GenesisAction(directory: "Payments", block: childGenesis)],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0
             ), kp)],
             childBlocks: ["Payments": childGenesis],
@@ -489,7 +489,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1
             ), kp)],
             timestamp: ts2, difficulty: difficulty, fetcher: fetcher
@@ -502,7 +502,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(nexusSpec.rewardAtBlock(3)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 2
             ), kp)],
             timestamp: ts3, difficulty: difficulty, fetcher: fetcher
@@ -514,7 +514,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: [sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(1)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 0  // nonce 0 on child chain
             ), kp)],
             parentChainBlock: nexusBlock2,
@@ -527,7 +527,7 @@ final class ChildBlockParentHomesteadTests: XCTestCase {
             transactions: BlockBuilder.buildTransactionsDictionary([sign(TransactionBody(
                 accountActions: [AccountAction(owner: ownerAddr, delta: Int64(childSpec.rewardAtBlock(2)))],
                 actions: [], depositActions: [], genesisActions: [],
-                peerActions: [], receiptActions: [], withdrawalActions: [],
+                receiptActions: [], withdrawalActions: [],
                 signers: [ownerAddr], fee: 0, nonce: 1  // nonce 1 on child chain
             ), kp)]),
             difficulty: difficulty,

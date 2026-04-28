@@ -63,7 +63,7 @@ public extension Block {
         if feesOverflow { return (false, .empty) }
         if try !validateBalanceChangesForGenesis(spec: specNode, allDepositActions: allDepositActions, allAccountActions: allAccountActions, totalFees: totalFees) { return (false, .empty) }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return (false, .empty) }
-        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher)
+        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher)
         if !frontierValid { return (false, .empty) }
         return (true, diff)
     }
@@ -135,7 +135,7 @@ public extension Block {
         let dBalance = ContinuousClock.now - tBalance
 
         let tFrontier = ContinuousClock.now
-        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher)
+        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: [], allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: [], fetcher: fetcher)
         if !frontierValid { return (false, .empty) }
         let dFrontier = ContinuousClock.now - tFrontier
 
@@ -190,23 +190,23 @@ public extension Block {
         if feesOverflow { return (false, .empty) }
         if try !validateBalanceChanges(spec: specNode, allDepositActions: allDepositActions, allWithdrawalActions: allWithdrawalActions, allAccountActions: allAccountActions, totalFees: totalFees) { return (false, .empty) }
         if try await !validateGenesisTransactions(fetcher: fetcher, transactionBodies: transactionBodies, parentSpec: specNode) { return (false, .empty) }
-        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, fetcher: fetcher)
+        let (frontierValid, diff) = try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: allAccountActions, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: allDepositActions, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, fetcher: fetcher)
         if !frontierValid { return (false, .empty) }
         return (true, diff)
     }
 
     func validateFrontierState(transactionBodies: [TransactionBody], fetcher: Fetcher) async throws -> (Bool, StateDiff) {
-        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: transactionBodies.flatMap { $0.depositActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allPeerActions: transactionBodies.flatMap { $0.peerActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: transactionBodies.flatMap { $0.withdrawalActions }, fetcher: fetcher)
+        return try await validateFrontierState(transactionBodies: transactionBodies, allAccountActions: transactionBodies.flatMap { $0.accountActions }, allActions: transactionBodies.flatMap { $0.actions }, allDepositActions: transactionBodies.flatMap { $0.depositActions }, allGenesisActions: transactionBodies.flatMap { $0.genesisActions }, allReceiptActions: transactionBodies.flatMap { $0.receiptActions }, allWithdrawalActions: transactionBodies.flatMap { $0.withdrawalActions }, fetcher: fetcher)
     }
 
-    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allPeerActions: [PeerAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> (Bool, StateDiff) {
+    func validateFrontierState(transactionBodies: [TransactionBody], allAccountActions: [AccountAction], allActions: [Action], allDepositActions: [DepositAction], allGenesisActions: [GenesisAction], allReceiptActions: [ReceiptAction], allWithdrawalActions: [WithdrawalAction], fetcher: Fetcher) async throws -> (Bool, StateDiff) {
         let resolvedHomestead = try await homestead.resolve(fetcher: fetcher)
         async let resolvedFrontier = frontier.resolve(fetcher: fetcher)
         guard let homesteadNode = resolvedHomestead.node else { throw ValidationErrors.homesteadNotResolved }
-        async let updatedResult = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allPeerActions: allPeerActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
+        async let updatedResult = homesteadNode.proveAndUpdateState(allAccountActions: allAccountActions, allActions: allActions, allDepositActions: allDepositActions, allGenesisActions: allGenesisActions, allReceiptActions: allReceiptActions, allWithdrawalActions: allWithdrawalActions, transactionBodies: transactionBodies, fetcher: fetcher)
         let (finalFrontier, (finalUpdatedHomestead, diff)) = await (try resolvedFrontier, try updatedResult)
         guard let frontierNode = finalFrontier.node else { throw ValidationErrors.homesteadNotResolved }
-        let valid = frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.peerState.rawCID == finalUpdatedHomestead.peerState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID
+        let valid = frontierNode.accountState.rawCID == finalUpdatedHomestead.accountState.rawCID && frontierNode.generalState.rawCID == finalUpdatedHomestead.generalState.rawCID && frontierNode.depositState.rawCID == finalUpdatedHomestead.depositState.rawCID && frontierNode.genesisState.rawCID == finalUpdatedHomestead.genesisState.rawCID && frontierNode.receiptState.rawCID == finalUpdatedHomestead.receiptState.rawCID
         return (valid, diff)
     }
 

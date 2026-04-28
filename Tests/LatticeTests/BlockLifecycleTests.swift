@@ -66,7 +66,7 @@ final class BlockMintingTests: XCTestCase {
         let body = TransactionBody(
             accountActions: [AccountAction(owner: owner, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [owner], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [owner], fee: 0, nonce: 0
         )
         let tx = signTransaction(body: body, keypair: kp)
 
@@ -132,7 +132,7 @@ final class BlockMintingTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: senderAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [senderAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [senderAddr], fee: 0, nonce: 0
         )
         let genesis = try await BlockBuilder.buildGenesis(
             spec: spec, transactions: [signTransaction(body: premineBody, keypair: sender)],
@@ -147,7 +147,7 @@ final class BlockMintingTests: XCTestCase {
                 AccountAction(owner: receiverAddr, delta: Int64(transferAmount + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [senderAddr], fee: 0, nonce: 1
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -176,7 +176,7 @@ final class BlockMintingTests: XCTestCase {
         let rewardBody = TransactionBody(
             accountActions: [AccountAction(owner: minerAddr, delta: Int64(reward))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [minerAddr], fee: 0, nonce: 0
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -203,7 +203,7 @@ final class BlockMintingTests: XCTestCase {
         let overclaimBody = TransactionBody(
             accountActions: [AccountAction(owner: minerAddr, delta: Int64(reward + 1))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [minerAddr], fee: 0, nonce: 0
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -272,7 +272,7 @@ final class BlockMintingTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
         let genesis = try await BlockBuilder.buildGenesis(
             spec: spec, transactions: [signTransaction(body: premineBody, keypair: alice)],
@@ -285,7 +285,7 @@ final class BlockMintingTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(100 + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 1
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -303,7 +303,7 @@ final class BlockMintingTests: XCTestCase {
                 AccountAction(owner: aliceAddr, delta: Int64(aliceBalance1 + 50 + reward) - Int64(aliceBalance1))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [bobAddr], fee: 0, nonce: 0
         )
         let block2 = try await BlockBuilder.buildBlock(
@@ -333,7 +333,7 @@ final class CrossChainTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: depositorAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [depositorAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [depositorAddr], fee: 0, nonce: 0
         )
         let childGenesis = try await BlockBuilder.buildGenesis(
             spec: childSpec, transactions: [signTransaction(body: premineBody, keypair: depositor)],
@@ -349,7 +349,7 @@ final class CrossChainTests: XCTestCase {
             depositActions: [
                 DepositAction(nonce: 1, demander: depositorAddr, amountDemanded: swapAmount, amountDeposited: swapAmount)
             ],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [depositorAddr], fee: 0, nonce: 1
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
@@ -383,7 +383,7 @@ final class CrossChainTests: XCTestCase {
             ],
             actions: [],
             depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [
                 ReceiptAction(
                     withdrawer: withdrawerAddr,
@@ -425,7 +425,7 @@ final class CrossChainTests: XCTestCase {
         let fundBody = TransactionBody(
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [], depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -437,7 +437,7 @@ final class CrossChainTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward - 100 + nexusSpec.rewardAtBlock(2)) - Int64(reward))],
             actions: [],
             depositActions: [DepositAction(nonce: 1, demander: kpAddr, amountDemanded: 100, amountDeposited: 100)],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 1
         )
         let block2 = try await BlockBuilder.buildBlock(
@@ -468,7 +468,7 @@ final class CrossChainTests: XCTestCase {
             accountActions: [AccountAction(owner: kpAddr, delta: Int64(reward))],
             actions: [],
             depositActions: [],
-            genesisActions: [], peerActions: [], receiptActions: [],
+            genesisActions: [], receiptActions: [],
             withdrawalActions: [
                 WithdrawalAction(withdrawer: kpAddr, nonce: 1, demander: kpAddr, amountDemanded: 100, amountWithdrawn: 100)
             ],
@@ -506,7 +506,7 @@ final class CrossChainTests: XCTestCase {
             actions: [],
             depositActions: [],
             genesisActions: [GenesisAction(directory: "Child", block: childGenesis)],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [kpAddr], fee: 0, nonce: 0
         )
         let tx = signTransaction(body: genesisActionBody, keypair: kp)
@@ -587,7 +587,7 @@ final class CrossChainTests: XCTestCase {
         let childPremineBody = TransactionBody(
             accountActions: [AccountAction(owner: depositorAddr, delta: Int64(childPremineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [depositorAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [depositorAddr], fee: 0, nonce: 0
         )
         let childGenesis = try await BlockBuilder.buildGenesis(
             spec: childSpec, transactions: [signTransaction(body: childPremineBody, keypair: depositor)],
@@ -606,7 +606,7 @@ final class CrossChainTests: XCTestCase {
             ],
             actions: [],
             depositActions: [childSwap],
-            genesisActions: [], peerActions: [], receiptActions: [], withdrawalActions: [],
+            genesisActions: [], receiptActions: [], withdrawalActions: [],
             signers: [depositorAddr], fee: 0, nonce: 1
         )
         let childBlock1 = try await BlockBuilder.buildBlock(
@@ -621,7 +621,7 @@ final class CrossChainTests: XCTestCase {
             ],
             actions: [],
             depositActions: [],
-            genesisActions: [], peerActions: [],
+            genesisActions: [],
             receiptActions: [
                 ReceiptAction(
                     withdrawer: depositorAddr,
@@ -655,7 +655,7 @@ final class CrossChainTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
         let genesis = try await BlockBuilder.buildGenesis(
             spec: spec, transactions: [signTransaction(body: premineBody, keypair: alice)],
@@ -669,7 +669,7 @@ final class CrossChainTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(premineAmount + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [bobAddr], fee: 0, nonce: 0
         )
         let stolenTx = signTransaction(body: stolenBody, keypair: bob)
@@ -746,7 +746,7 @@ final class BlockLifecycleTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: aliceAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [aliceAddr], fee: 0, nonce: 0
         )
         let genesis = try await BlockBuilder.buildGenesis(
             spec: spec, transactions: [signTransaction(body: premineBody, keypair: alice)],
@@ -761,7 +761,7 @@ final class BlockLifecycleTests: XCTestCase {
                 AccountAction(owner: bobAddr, delta: Int64(1000 + reward))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [aliceAddr], fee: 0, nonce: 1
         )
         let block1 = try await BlockBuilder.buildBlock(
@@ -839,7 +839,7 @@ final class BlockLifecycleTests: XCTestCase {
         let premineBody = TransactionBody(
             accountActions: [AccountAction(owner: payerAddr, delta: Int64(premineAmount))],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [], signers: [payerAddr], fee: 0, nonce: 0
+            receiptActions: [], withdrawalActions: [], signers: [payerAddr], fee: 0, nonce: 0
         )
         let genesis = try await BlockBuilder.buildGenesis(
             spec: spec, transactions: [signTransaction(body: premineBody, keypair: payer)],
@@ -852,7 +852,7 @@ final class BlockLifecycleTests: XCTestCase {
                 AccountAction(owner: minerAddr, delta: Int64(reward + fee))
             ],
             actions: [], depositActions: [], genesisActions: [],
-            peerActions: [], receiptActions: [], withdrawalActions: [],
+            receiptActions: [], withdrawalActions: [],
             signers: [payerAddr], fee: fee, nonce: 1
         )
         let block1 = try await BlockBuilder.buildBlock(
