@@ -247,6 +247,7 @@ public actor ChainState {
             }
         }
         self.mainChainBlockAtIndex = blockAtIndex
+        self.tipSnapshot = nil
     }
 
     public static func fromGenesis(block: Block, retentionDepth: UInt64 = RECENT_BLOCK_DISTANCE) -> ChainState {
@@ -342,7 +343,7 @@ public actor ChainState {
 
     // MARK: - Block Submission
 
-    private func updateTipSnapshot(block: Block) {
+    public func updateTipSnapshot(block: Block) {
         tipSnapshot = TipBlockSnapshot(
             frontierCID: block.frontier.rawCID,
             homesteadCID: block.homestead.rawCID,
